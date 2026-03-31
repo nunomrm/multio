@@ -7,11 +7,13 @@
 ! does it submit to any jurisdiction.
 !
 program multio_replay_nemo_fapi
-    use, intrinsic :: iso_fortran_env, only: int64
+    use, intrinsic :: iso_c_binding
+    use, intrinsic :: iso_fortran_env
     use multio_api
     use fckit_module
     use fckit_mpi_module
-implicit none
+    use mpi_f08 ! for error codes
+    implicit none
 
     integer :: rank, client_count, server_count
 
@@ -22,10 +24,10 @@ implicit none
     logical singlePrecision
 
     type(multio_handle) :: mio
-    integer(int64) :: mio_parent_comm
+    integer(8) :: mio_parent_comm = MPI_UNDEFINED
 
     character(len=3), dimension(4) :: nemo_parameters = ["sst", "ssu", "ssv", "ssw" ]
-    integer, dimension(4) :: grib_param_id = [262101, 262138, 262137, 212202 ]
+    integer, dimension(4) :: grib_param_id = [262101, 212101, 212151, 212202 ]
     character(len=6), dimension(4) :: grib_grid_type = ["T grid", "U grid", "V grid", "W grid" ]
     character(len=12), dimension(4) :: grib_level_type = ["oceanSurface", "oceanSurface", "oceanSurface", "oceanSurface" ]
 
@@ -57,9 +59,7 @@ contains
 
 
 function hasSinglePrecison() result(singlePrecision)
-    use, intrinsic :: iso_c_binding, only: c_int
-    use, intrinsic :: iso_c_binding, only: c_char
-implicit none
+    use, intrinsic :: iso_c_binding
     character(kind=c_char,len=255) :: arg
     integer(c_int) :: iarg
     logical :: singlePrecision
@@ -75,30 +75,26 @@ implicit none
 end function hasSinglePrecison
 
 subroutine multio_custom_error_handler(context, err, info)
-    use, intrinsic :: iso_fortran_env, only: error_unit
-    use, intrinsic :: iso_fortran_env, only: int64
-    use :: multio_api, only: multio_failure_info
-    use fckit_module,  only: fckit_mpi_comm
-implicit none
-    integer(int64), intent(inout) :: context  ! Use mpi communicator as context
-    integer,        intent(in)    :: err
-    type(multio_failure_info), intent(in) :: info
+    integer(8), intent(inout) :: context  ! Use mpi communicator as context
+    integer, intent(in) :: err
+    class(multio_failure_info), intent(in) :: info
     type(fckit_mpi_comm) :: comm
 
     if (err /= MULTIO_SUCCESS) then
         write (error_unit, *) 'MULTIO ERROR: ',multio_error_string(err, info)
         write (error_unit, *) 'Abort mpi...'
-        call fckit_mpi%abort()
+
+        if (context /= MPI_UNDEFINED) then
+            comm = fckit_mpi_comm(int(context))
+            call comm%abort(MPI_ERR_OTHER)
+            context = MPI_UNDEFINED
+        endif
     endif
 end subroutine
 
 
 
 subroutine init(mio, rank, server_count, client_count)
-    use :: multio_api, only: failure_handler_t
-    use, intrinsic :: iso_fortran_env, only: error_unit
-    use, intrinsic :: iso_c_binding, only: c_int
-implicit none
     integer(kind=c_int) :: cerr
     integer :: ierror
     integer, intent(out) :: rank
@@ -111,20 +107,17 @@ implicit none
     integer(c_int) :: newcomm_id
     type(multio_handle), intent(inout) :: mio
     type(multio_metadata) :: md
-    procedure(failure_handler_t), pointer :: pf
 
     type(multio_configuration) :: cc
     ! for tests
-    logical :: is_active
+    logical(c_bool) :: is_active
 
 
     write(0,*) "Init..."
     cerr = cc%new()
     if (cerr /= MULTIO_SUCCESS) ERROR STOP "Error creating default configuration"
 
-
-    pf => multio_custom_error_handler
-    cerr = cc%set_failure_handler(pf, mio_parent_comm)
+    cerr = cc%set_failure_handler(multio_custom_error_handler, mio_parent_comm)
     if (cerr /= MULTIO_SUCCESS) then
          write(error_unit, *) 'setting multio failure handler failed: ',multio_error_string(cerr)
          ERROR STOP "MULTIO_ERROR"
@@ -132,7 +125,7 @@ implicit none
 
 
 
-    cerr = cc%mpi_allow_world_default_comm(.FALSE.)
+    cerr = cc%mpi_allow_world_default_comm(.FALSE._1)
     if (cerr /= MULTIO_SUCCESS) ERROR STOP "Error setting default multio mpi allow_world_default_comm"
 
     ! color_client = 777
@@ -244,8 +237,6 @@ subroutine run(mio, rank, client_count, &
         nemo_parameters, grib_param_id, grib_grid_type, grib_level_type, &
         global_size, level, step, singlePrecision &
 )
-    use, intrinsic :: iso_c_binding, only: c_int
-implicit none
     integer(kind=c_int) :: cerr
     type(multio_handle), intent(inout) :: mio
     integer, intent(in) :: rank
@@ -254,10 +245,10 @@ implicit none
     integer, intent(in) :: level
     integer, intent(in) :: step
     logical, intent(in) :: singlePrecision
-    character(*), dimension(4), intent(in) :: nemo_parameters
-    integer, dimension(4), intent(in) :: grib_param_id
-    character(*), dimension(4), intent(in) :: grib_grid_type
-    character(*), dimension(4), intent(in) :: grib_level_type
+    character(*), dimension(2), intent(in) :: nemo_parameters
+    integer, dimension(2), intent(in) :: grib_param_id
+    character(*), dimension(2), intent(in) :: grib_grid_type
+    character(*), dimension(2), intent(in) :: grib_level_type
 
 
     write(0,*) "Run..."
@@ -276,8 +267,6 @@ end subroutine run
 
 
 subroutine read_grid(grid_type, client_id, domain_dims)
-    use, intrinsic :: iso_c_binding, only: c_int
-implicit none
     integer(kind=c_int) :: cerr
     integer, intent(in) :: client_id
     character(len=*), intent(in) :: grid_type
@@ -304,8 +293,6 @@ end subroutine read_grid
 
 
 subroutine set_domains(mio, rank, client_count)
-    use, intrinsic :: iso_c_binding, only: c_int
-implicit none
     integer(kind=c_int) :: cerr
     type(multio_handle), intent(inout) :: mio
     integer, intent(in) :: rank
@@ -345,20 +332,16 @@ end subroutine set_domains
 
 subroutine write_fields(mio, rank, client_count, nemo_parameters, grib_param_id, grib_grid_type, grib_level_type, &
     global_size, level, step, singlePrecision)
-    use, intrinsic :: iso_c_binding, only: c_int
-    use, intrinsic :: iso_c_binding, only: c_double
-    use, intrinsic :: iso_c_binding, only: c_float
-implicit none
     integer(kind=c_int) :: cerr
     type(multio_handle), intent(inout) :: mio
     integer, intent(in) :: rank
     integer, intent(in) :: client_count
     type(multio_metadata) :: md
     integer, dimension(11) :: buffer
-    character(*), dimension(4), intent(in) :: nemo_parameters
-    integer, dimension(4), intent(in) :: grib_param_id
-    character(*), dimension(4), intent(in) :: grib_grid_type
-    character(*), dimension(4), intent(in) :: grib_level_type
+    character(*), dimension(2), intent(in) :: nemo_parameters
+    integer, dimension(2), intent(in) :: grib_param_id
+    character(*), dimension(2), intent(in) :: grib_grid_type
+    character(*), dimension(2), intent(in) :: grib_level_type
     integer, intent(in):: global_size
     integer, intent(in):: level
     integer, intent(in):: step
@@ -378,21 +361,21 @@ implicit none
 
     cerr = md%set_string("category", "ocean-2d")
     if (cerr /= MULTIO_SUCCESS) ERROR STOP 20
-    cerr = md%set_int("misc-globalSize", global_size)
+    cerr = md%set_int("globalSize", global_size)
     if (cerr /= MULTIO_SUCCESS) ERROR STOP 21
     cerr = md%set_int("level", level)
     if (cerr /= MULTIO_SUCCESS) ERROR STOP 22
     cerr = md%set_int("step", step)
     if (cerr /= MULTIO_SUCCESS) ERROR STOP 23
 
-    cerr = md%set_real("missingValue", 0.0_8)
+    cerr = md%set_double("missingValue", 0.0_8)
     if (cerr /= MULTIO_SUCCESS) ERROR STOP 31
-    cerr = md%set_bool("bitmapPresent", .FALSE.)
+    cerr = md%set_bool("bitmapPresent", .FALSE._1)
     if (cerr /= MULTIO_SUCCESS) ERROR STOP 32
     cerr = md%set_int("bitsPerValue", 16)
     if (cerr /= MULTIO_SUCCESS) ERROR STOP 33
 
-    cerr = md%set_bool("toAllServers", .FALSE.)
+    cerr = md%set_bool("toAllServers", .FALSE._1)
     if (cerr /= MULTIO_SUCCESS) ERROR STOP 34
 
     do i=1, size(nemo_parameters)
@@ -403,8 +386,8 @@ implicit none
         if (cerr /= MULTIO_SUCCESS) ERROR STOP 24
         cerr = md%set_string("nemoParam", nemo_parameters(i))
         if (cerr /= MULTIO_SUCCESS) ERROR STOP 25
-        ! cerr = md%set_int("param", grib_param_id(i))
-        ! if (cerr /= MULTIO_SUCCESS) ERROR STOP 26
+        cerr = md%set_int("param", grib_param_id(i))
+        if (cerr /= MULTIO_SUCCESS) ERROR STOP 26
         cerr = md%set_string("unstructuredGridSubtype", grib_grid_type(i)(1:1))
         if (cerr /= MULTIO_SUCCESS) ERROR STOP 27
         cerr = md%set_string("domain", grib_grid_type(i))
@@ -434,10 +417,6 @@ end subroutine write_fields
 
 
 subroutine read_field(param, client_id, step, values)
-    use, intrinsic :: iso_c_binding, only: c_int
-    use, intrinsic :: iso_c_binding, only: c_double
-    use, intrinsic :: iso_c_binding, only: c_sizeof
-implicit none
      integer(kind=c_int) :: cerr
      integer, intent(in) :: client_id
      integer, intent(in) :: step
@@ -488,17 +467,15 @@ subroutine test_data(rank, &
         nemo_parameters, grib_param_id, grib_grid_type, grib_level_type, &
         global_size, level, step &
 )
-    use, intrinsic :: iso_c_binding, only: c_int
-implicit none
     integer(kind=c_int) :: cerr
     integer, intent(in) :: rank
     integer, intent(in) :: global_size
     integer, intent(in) :: level
     integer, intent(in) :: step
-    character(*), dimension(4), intent(in) :: nemo_parameters
-    integer, dimension(4), intent(in)      :: grib_param_id
-    character(*), dimension(4), intent(in) :: grib_grid_type
-    character(*), dimension(4), intent(in) :: grib_level_type
+    character(*), dimension(2), intent(in) :: nemo_parameters
+    integer, dimension(2), intent(in)      :: grib_param_id
+    character(*), dimension(2), intent(in) :: grib_grid_type
+    character(*), dimension(2), intent(in) :: grib_level_type
 
     type(fckit_mpi_comm) :: comm
 

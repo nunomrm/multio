@@ -21,7 +21,7 @@
 
 #include "FesomInterpolationWeights.h"
 
-namespace multio::action::interpolate_fesom {
+namespace multio::action::interpolateFESOM {
 
 namespace {
 
@@ -39,6 +39,7 @@ void parseInputFileName(const std::string& fname, std::string& fesomName, std::s
     else {
         throw eckit::SeriousBug("Unable to parse filename: " + fname, Here());
     }
+    return;
 }
 
 
@@ -127,6 +128,8 @@ FesomCacheGenerator::FesomCacheGenerator(int argc, char** argv) :
     options_.push_back(new eckit::option::SimpleOption<std::string>(
         "inputFile", "Name of the input file. Default( \"CORE2_ngrid_NSIDE32_0_ring.csv\" )"));
     options_.push_back(new eckit::option::SimpleOption<bool>("dumpTriplets", "Dump all the triplets to screen"));
+
+    return;
 }
 
 
@@ -223,10 +226,10 @@ void FesomCacheGenerator::execute(const eckit::option::CmdArgs& args) {
 
 void FesomCacheGenerator::finish(const eckit::option::CmdArgs&) {}
 
-}  // namespace multio::action::interpolate_fesom
+}  // namespace multio::action::interpolateFESOM
 
 
 int main(int argc, char** argv) {
-    multio::action::interpolate_fesom::FesomCacheGenerator tool(argc, argv);
+    multio::action::interpolateFESOM::FesomCacheGenerator tool(argc, argv);
     return tool.start();
 }

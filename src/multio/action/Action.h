@@ -28,8 +28,8 @@
 #include "multio/message/Message.h"
 #include "multio/util/FailureHandling.h"
 
-namespace multio::message::match {
-class MatchReduce;
+namespace multio::message {
+class MetadataSelectors;
 }
 
 namespace multio::action {
@@ -59,10 +59,11 @@ struct ActionFailureTraits {
 class Action : private eckit::NonCopyable, public FailureAware<ActionFailureTraits> {
 public:
     explicit Action(const ComponentConfiguration& compConf);
+    ~Action() override;
 
     void execute(message::Message msg);
 
-    virtual void matchedFields(message::match::MatchReduce& selectors) const;
+    virtual void matchedFields(message::MetadataSelectors& selectors) const;
 
     util::FailureHandlerResponse handleFailure(util::OnActionError, const util::FailureContext&,
                                                util::DefaultFailureState&) const override;

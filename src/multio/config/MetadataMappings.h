@@ -19,7 +19,6 @@
 #include "multio/message/MetadataMapping.h"
 
 #include <functional>
-#include <memory>
 #include <unordered_map>
 
 
@@ -35,7 +34,7 @@ public:
 
 private:
     // const YAMLFile& configFile_;
-    mutable std::unordered_map<std::string, std::unique_ptr<std::vector<message::MetadataMapping>>> mappings_;
+    mutable std::unordered_map<std::string, std::vector<message::MetadataMapping>> mappings_;
 };
 
 }  // namespace multio::config

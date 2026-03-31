@@ -86,8 +86,7 @@ CASE("Set and get CDO attributes") {
     cdo.set_attribute<uint64_t*>(".maestro.ecmwf.time", &time, true);  // uint()
 
     std::string expver{"0001"};
-    const char *s = expver.c_str();
-    cdo.set_attribute<const char**>(".maestro.ecmwf.expver", &s, true);  // str()
+    cdo.set_attribute<const char*>(".maestro.ecmwf.expver", expver.c_str(), true);  // str()
 
     std::time_t now = std::time(NULL);
     auto seconds = static_cast<int>(std::chrono::seconds(now).count());
@@ -151,9 +150,8 @@ CASE("Maestro core CDO operations with local transfer") {
     std::string stream{"oper"};
 
     MaestroCdo sourceCdo{"name"};
-    sourceCdo.set_attribute<int64_t*>(".maestro.ecmwf.step", &step, true);
-    const char* s = stream.c_str();
-    sourceCdo.set_attribute<const char**>(".maestro.ecmwf.stream", &s, true);
+    sourceCdo.set_attribute<int64_t>(".maestro.ecmwf.step", step, true);
+    sourceCdo.set_attribute<const char*>(".maestro.ecmwf.stream", stream.c_str(), true);
     sourceCdo.seal();
     sourceCdo.offer();
 

@@ -11,19 +11,15 @@
 #include "SingleFieldSink.h"
 
 #include <iostream>
-#include <sstream>
 
 #include "eckit/exception/Exceptions.h"
 #include "eckit/message/Message.h"
 
 #include "multio/LibMultio.h"
-#include "multio/datamod/Glossary.h"
 #include "multio/sink/DataSink.h"
+#include "multio/util/ScopedTimer.h"
 
-namespace multio::action::single_field_sink {
-
-namespace dm = multio::datamod;
-
+namespace multio::action {
 
 SingleFieldSink::SingleFieldSink(const ComponentConfiguration& compConf) :
     Action{compConf}, rootPath_{compConf.parsedConfig().getString("root_path", "")} {}
@@ -31,6 +27,7 @@ SingleFieldSink::SingleFieldSink(const ComponentConfiguration& compConf) :
 void SingleFieldSink::executeImpl(Message msg) {
     switch (msg.tag()) {
         case Message::Tag::Field:
+        case Message::Tag::Grib:
             write(msg);
             break;
 
@@ -44,29 +41,11 @@ void SingleFieldSink::executeImpl(Message msg) {
 }
 
 void SingleFieldSink::write(Message msg) {
-    util::ScopedTiming timing{statistics_.actionTiming_};
-
-    std::string paramOrId;
-    auto searchParam = msg.metadata().find(dm::legacy::Param);
-    if (searchParam != msg.metadata().end()) {
-        paramOrId = searchParam->second.get<std::string>();
-    }
-    else {
-        auto searchParamId = msg.metadata().find(dm::legacy::ParamId);
-        if (searchParamId != msg.metadata().end()) {
-            paramOrId = eckit::translate<std::string>(searchParamId->second.get<std::int64_t>());
-        }
-        else {
-            std::ostringstream oss;
-            oss << "SingleFieldSink::write: No param or paramId found in metadata:";
-            throw eckit::UserError(oss.str(), Here());
-        }
-    }
-
+    util::ScopedTiming timing{statistics_.localTimer_, statistics_.actionTiming_};
 
     std::ostringstream oss;
-    oss << rootPath_ << msg.metadata().get<std::int64_t>("level") << "::" << paramOrId
-        << "::" << msg.metadata().get<std::int64_t>("step");
+    oss << rootPath_ << msg.metadata().getUnsigned("level") << "::" << msg.metadata().getString("param")
+        << "::" << msg.metadata().getUnsigned("step");
     eckit::LocalConfiguration config;
 
     LOG_DEBUG_LIB(LibMultio) << "Writing output path: " << oss.str() << std::endl;
@@ -80,7 +59,7 @@ void SingleFieldSink::write(Message msg) {
 }
 
 void SingleFieldSink::flush() const {
-    util::ScopedTiming timing{statistics_.actionTiming_};
+    util::ScopedTiming timing{statistics_.localTimer_, statistics_.actionTiming_};
 
     eckit::Log::debug<LibMultio>() << "*** Executing single-field flush for data sinks... " << std::endl;
 
@@ -104,4 +83,4 @@ void SingleFieldSink::print(std::ostream& os) const {
 
 static ActionBuilder<SingleFieldSink> SinkBuilder("single-field-sink");
 
-}  // namespace multio::action::single_field_sink
+}  // namespace multio::action

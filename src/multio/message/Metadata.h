@@ -8,96 +8,44 @@
  * does it submit to any jurisdiction.
  */
 
+/// @author Domokos Sarmany
+/// @author Simon Smart
+/// @author Tiago Quintino
+
+/// @date Oct 2019
 
 #pragma once
 
-#include "multio/message/BaseMetadata.h"
-
-
-//----------------------------------------------------------------------------------------------------------------------
-
+#include "eckit/config/LocalConfiguration.h"
+#include "eckit/exception/Exceptions.h"
 
 namespace multio::message {
 
-// Metadata class with lookups on global Parametrization instance
-// TODO - think about avoiding the global parametrization in favor of a `ContextedMetadata` that refs to a
-// parametrization object in the multio configuration
-class Metadata : public BaseMetadata {
+//=============================================================================
+
+class Metadata : public eckit::LocalConfiguration {
 public:
-    using Base = BaseMetadata;
-    using This = Metadata;
-    using KeyType = typename MetadataTypes::KeyType;
-    using MapType = typename MetadataTypes::MapType<MetadataValue>;
+    Metadata() = default;
+    Metadata(const eckit::Configuration& config);
+};
 
-    virtual ~Metadata() {};
+std::string to_string(const Metadata& metadata);
+Metadata to_metadata(const std::string& fieldId);
 
-    using BaseMetadata::BaseMetadata;
-
-    Metadata(const BaseMetadata& b) : BaseMetadata(b) {}
-    BaseMetadata toBaseMetadata() const { return BaseMetadata{values_}; }
-    operator std::unique_ptr<BaseMetadata>() { return std::make_unique<BaseMetadata>(values_); }
-
-    using Base::operator=;
-
-    using Base::get;
-    using Base::getOpt;
+//=============================================================================
 
 
-    using Base::operator[];
+class MetadataException : public eckit::Exception {
+public:
+    MetadataException(const std::string& reason, const eckit::CodeLocation& l = eckit::CodeLocation());
+};
 
-    using Base::set;
-    using Base::trySet;
-
-    using Iterator = typename MapType::iterator;
-    using ConstIterator = typename MapType::const_iterator;
-
-    // The single place we need to change to support lookups in parametrization.
-    // Important: The non-const version will copy values from the global parametrization dictionary
-    //            to the local one - It will always return an iterator to the local dictionary.
-    //            This allows values to be modified in the local object directly.
-    //
-    //            The const version will return either an iterator to the local object or the
-    //            global parametrization dictionary.
-    //            If keys are assumed to hold nested objects or large arrays which won't be modified anyway -
-    //            it is reasonable to explicitly const-cast the object to select the const lookup version.
-    Iterator find(const KeyType& k) override;
-    ConstIterator find(const KeyType& k) const override;
-
-    using Base::begin;
-    using Base::cbegin;
-    using Base::cend;
-    using Base::end;
-    using Base::localFind;
-
-    using Base::erase;
-
-    using Base::empty;
-
-    using Base::size;
-
-    using Base::clear;
-
-    using Base::merge;
-
-    using Base::updateNoOverwrite;
-    using Base::updateOverwrite;
-
-    using Base::json;
-    using Base::toString;
+class MetadataMissingKeyException : public MetadataException {
+public:
+    MetadataMissingKeyException(const std::string& missingKey, const eckit::CodeLocation& l = eckit::CodeLocation());
 };
 
 
-//----------------------------------------------------------------------------------------------------------------------
-
-
-Metadata metadataFromYAML(const std::string& yamlString);
-
-Metadata toMetadata(const eckit::Value& value);
-
-Metadata toMetadata(const eckit::Configuration& value);
-
-
-//-----------------------------------------------------------------------------
-
+//=============================================================================
 
 }  // namespace multio::message

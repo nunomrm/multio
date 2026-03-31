@@ -19,7 +19,7 @@ Message::Header::Header(Tag tag, Peer src, Peer dst, std::string&& fieldId) :
     tag_{tag},
     source_{std::move(src)},
     destination_{std::move(dst)},
-    metadata_{std::make_shared<Metadata>(message::metadataFromYAML(fieldId))},
+    metadata_{message::to_metadata(fieldId)},
     fieldId_{std::move(fieldId)} {
 
     // TODO: Maybe it is useful to check here if in the metadata we have the fields:
@@ -30,13 +30,6 @@ Message::Header::Header(Tag tag, Peer src, Peer dst, std::string&& fieldId) :
 }
 
 Message::Header::Header(Tag tag, Peer src, Peer dst, Metadata&& md) :
-    tag_{tag},
-    source_{std::move(src)},
-    destination_{std::move(dst)},
-    metadata_{std::make_shared<Metadata>(std::move(md))},
-    fieldId_{} {}
-
-Message::Header::Header(Tag tag, Peer src, Peer dst, SharedMetadata md) :
     tag_{tag}, source_{std::move(src)}, destination_{std::move(dst)}, metadata_{std::move(md)}, fieldId_{} {}
 
 Message::Tag Message::Header::tag() const {
@@ -51,67 +44,52 @@ Peer Message::Header::destination() const {
     return destination_;
 }
 
-const Metadata& Message::Header::metadata() const {
-    return metadata_.read();
-}
-Metadata& Message::Header::modifyMetadata() {
-    fieldId_ = std::nullopt;
-    return metadata_.modify();
+const Metadata& Message::Header::metadata() const& {
+    return metadata_;
 }
 
 // Metadata&& Message::Header::metadata() && {
 //     return std::move(metadata_);
 // }
 
-// Copy or acquire metadata object if only owned by this object
-SharedMetadata Message::Header::moveOrCopyMetadata() const {
-    return metadata_.moveOrCopy();
-}
-
-// Copy or acquire metadata object if only owned by this object
-void Message::Header::acquireMetadata() {
-    metadata_.acquire();
-}
-
-
 std::string Message::Header::name() const {
-    if (auto optVal = metadata_.read().getOpt<std::string>(dm::legacy::Name); optVal) {
-        return *optVal;
+    if (!metadata_.has("name")) {
+        throw MetadataMissingKeyException("name", Here());
     }
-    throw MetadataMissingKeyException(dm::legacy::Name, Here());
+    return metadata_.getString("name");
 }
 
 std::string Message::Header::category() const {
-    if (auto optVal = metadata_.read().getOpt<std::string>(dm::legacy::Category); optVal) {
-        return *optVal;
+    if (!metadata_.has("category")) {
+        throw MetadataMissingKeyException("category", Here());
     }
-    throw MetadataMissingKeyException(dm::legacy::Category, Here());
+    return metadata_.getString("category");
 }
 
-std::int64_t Message::Header::globalSize() const {
-    if (auto optVal = metadata_.read().getOpt<std::int64_t>(dm::legacy::GlobalSize); optVal) {
-        return *optVal;
+long Message::Header::globalSize() const {
+    if (!metadata_.has("globalSize")) {
+        throw MetadataMissingKeyException("globalSize", Here());
     }
-    throw MetadataMissingKeyException(dm::legacy::GlobalSize, Here());
+    return metadata_.getLong("globalSize");
 }
 
 std::string Message::Header::domain() const {
-    if (auto optVal = metadata_.read().getOpt<std::string>(dm::legacy::Domain); optVal) {
-        return *optVal;
+    if (!metadata_.has("domain")) {
+        throw MetadataMissingKeyException("domain", Here());
     }
-    throw MetadataMissingKeyException(dm::legacy::Domain, Here());
+    return metadata_.getString("domain");
 }
 
 util::PrecisionTag Message::Header::precision() const {
-    if (auto optVal = metadata_.read().getOpt<std::string>(dm::legacy::Precision); optVal) {
-        return util::decodePrecisionTag(*optVal);
+    if (!metadata_.has("precision")) {
+        throw MetadataMissingKeyException("precision", Here());
     }
-    throw MetadataMissingKeyException(dm::legacy::Precision, Here());
+    return util::decodePrecisionTag(metadata_.getString("precision"));
 }
 
 const std::string& Message::Header::fieldId() const {
     if (!fieldId_) {
-        fieldId_ = metadata_.read().toString();
+        fieldId_ = message::to_string(metadata_);
     }
     return *fieldId_;
 }
@@ -128,8 +106,9 @@ void Message::Header::encode(eckit::Stream& strm) const {
     strm << fieldId();
 }
 
-Message::LogHeader Message::Header::logHeader() const {
-    return Message::LogHeader{tag_, source_, destination_, metadata_.weakRef(), fieldId_};
-}
+Message::Header Message::Header::modifyMetadata(Metadata&& md) const {
+    return Header{tag_, std::move(source_), std::move(destination_), std::move(md)};
+};
+
 
 }  // namespace multio::message

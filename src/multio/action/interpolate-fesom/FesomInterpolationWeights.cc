@@ -6,7 +6,9 @@
 #include <vector>
 #include "InterpolateFesom_debug.h"
 
-namespace multio::action::interpolate_fesom {
+#define M_PI 3.14159265358979323846
+
+namespace multio::action::interpolateFESOM {
 
 
 Tri::Tri() : i_{0}, j_{0}, v_{0.0} {};
@@ -36,6 +38,7 @@ std::size_t Tri::reverse_idx(std::size_t scale) const {
 void Tri::print() const {
     std::cout << std::setw(15) << i_ << "   " << std::setw(15) << j_ << "   " << std::setw(35) << std::setprecision(25)
               << v_ << std::endl;
+    return;
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -208,4 +211,4 @@ void FesomInterpolationWeights::generateCacheFromTriplets(size_t NSide, ordering
     INTERPOLATE_FESOM_OUT_STREAM << " - FesomIntermopationWeights: exit generateCache<double>" << std::endl;
 }
 
-}  // namespace multio::action::interpolate_fesom
+}  // namespace multio::action::interpolateFESOM

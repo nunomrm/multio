@@ -22,7 +22,7 @@
 #include "multio/domain/Domain.h"
 #include "multio/domain/Mask.h"
 
-namespace multio::action::mask {
+namespace multio::action {
 
 
 class Mask : public ChainedAction {
@@ -36,10 +36,10 @@ private:
     message::Message createMasked(message::Message msg) const;
 
     template <typename Precision>
-    void applyMask(message::Message& msg) const;
+    void applyMask(message::Message msg) const;
 
     template <typename Precision>
-    void applyOffset(message::Message& msg) const;
+    void applyOffset(message::Message msg) const;
 
     void print(std::ostream& os) const override;
 
@@ -49,4 +49,4 @@ private:
     double offsetValue_;
 };
 
-}  // namespace multio::action::mask
+}  // namespace multio::action

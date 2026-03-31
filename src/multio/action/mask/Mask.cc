@@ -15,10 +15,11 @@
 #include "eckit/log/Log.h"
 
 #include "multio/domain/Mask.h"
+#include "multio/util/ScopedTimer.h"
 
 #include "multio/util/PrecisionTag.h"
 
-namespace multio::action::mask {
+namespace multio::action {
 
 namespace {
 std::set<std::string> fetch_offset_fields(const eckit::Configuration& cfg) {
@@ -55,10 +56,7 @@ void Mask::executeImpl(message::Message msg) {
 
 template <typename Precision>
 message::Message Mask::createMasked(message::Message msg) const {
-    util::ScopedTiming timing{statistics_.actionTiming_};
-
-    msg.acquire();
-    // Now metadata and payload can be modified
+    util::ScopedTiming timing{statistics_.localTimer_, statistics_.actionTiming_};
 
     if (applyBitmap_) {
         applyMask<Precision>(msg);
@@ -68,16 +66,19 @@ message::Message Mask::createMasked(message::Message msg) const {
         applyOffset<Precision>(msg);
     }
 
-    message::Metadata& md = msg.modifyMetadata();
+    message::Metadata md{msg.metadata()};
     md.set("missingValue", missingValue_);
     md.set("bitmapPresent", true);
 
-    return msg;
+    message::Message maskedMsg{message::Message::Header{msg.tag(), msg.source(), msg.destination(), std::move(md)},
+                               std::move(msg.payload())};
+
+    return maskedMsg;
 }
 
 
 template <typename Precision>
-void Mask::applyMask(message::Message& msg) const {
+void Mask::applyMask(message::Message msg) const {
     auto const& bkey = domain::Mask::key(msg.metadata());
     auto const& bitmask = domain::Mask::instance().get(bkey);
 
@@ -88,44 +89,32 @@ void Mask::applyMask(message::Message& msg) const {
         throw eckit::SeriousBug(oss.str(), Here());
     }
 
-    auto git = static_cast<Precision*>(msg.payload().modifyData());
+    // Explicitly modify shared buffer - masked entries should be safe to override
+    auto git = static_cast<Precision*>(msg.sharedPayload()->data());
 
-    std::size_t offset = 0;
-    for (const auto& valLengthPair : bitmask) {
-        if (valLengthPair.first) {
-            offset += valLengthPair.second;
+    for (const auto bval : bitmask) {
+        if (not bval) {
+            *git = static_cast<Precision>(missingValue_);
         }
-        else {
-            std::size_t nextOffset = offset + valLengthPair.second;
-            for (std::size_t i = offset; i < nextOffset; ++i) {
-                git[i] = static_cast<Precision>(missingValue_);
-            }
-            offset = nextOffset;
-        }
+        ++git;
     }
 }
 
 template <typename Precision>
-void Mask::applyOffset(message::Message& msg) const {
+void Mask::applyOffset(message::Message msg) const {
     auto const& bkey = domain::Mask::key(msg.metadata());
     auto const& bitmask = domain::Mask::instance().get(bkey);
 
     ASSERT(bitmask.size() == msg.size() / sizeof(Precision));
 
-    auto git = static_cast<Precision*>(msg.payload().modifyData());
+    // Explicitly modify shared buffer - masked entries should be safe to override
+    auto git = static_cast<Precision*>(msg.sharedPayload()->data());
 
-    std::size_t offset = 0;
-    for (const auto& valLengthPair : bitmask) {
-        if (valLengthPair.first) {
-            std::size_t nextOffset = offset + valLengthPair.second;
-            for (std::size_t i = offset; i < nextOffset; ++i) {
-                git[i] = git[i] + static_cast<Precision>(offsetValue_);
-            }
-            offset = nextOffset;
+    for (const auto bval : bitmask) {
+        if (bval) {
+            *git += static_cast<Precision>(offsetValue_);
         }
-        else {
-            offset += valLengthPair.second;
-        }
+        ++git;
     }
 }
 
@@ -136,4 +125,4 @@ void Mask::print(std::ostream& os) const {
 
 static ActionBuilder<Mask> MaskBuilder("mask");
 
-}  // namespace multio::action::mask
+}  // namespace multio::action

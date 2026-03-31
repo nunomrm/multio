@@ -4,7 +4,7 @@ set(PREFIX ecom_extremesDT)
 ecbuild_get_test_multidata(
   EXTRACT
   TARGET ${PREFIX}_get_test_data
-  DIRNAME ecom/test-data/extremesDT/001
+  DIRNAME ecom/extremesDT/001
   DIRLOCAL ${CMAKE_CURRENT_BINARY_DIR}
   NAMES
     "reference.tar.bz"
@@ -13,7 +13,7 @@ ecbuild_get_test_multidata(
 
 ecbuild_get_test_multidata(
   TARGET ${PREFIX}_get_test_cfg
-  DIRNAME ecom/test-data/extremesDT/001
+  DIRNAME ecom/extremesDT/001
   DIRLOCAL ${CMAKE_CURRENT_BINARY_DIR}
   NAMES
     "output-manager-config.yaml"
@@ -25,18 +25,16 @@ list( APPEND _arguments
   "-i ${CMAKE_CURRENT_BINARY_DIR}/reproducer"
 )
 
-ecbuild_add_test(
-  ENABLED       OFF
-  TARGET        ${PREFIX}_${_test}_run
-  TEST_REQUIRES ${PREFIX}_get_test_data ${PREFIX}_get_test_cfg
-  COMMAND       secom
-  ARGS          ${_arguments}
-)
-
-ecbuild_add_test(
-  ENABLED       OFF
-  TARGET        ${PREFIX}_${_test}_metadata
-  TEST_REQUIRES ${PREFIX}_get_data ${PREFIX}_get_cache
-  COMMAND       grib_compare
-  ARGS          -H ${CMAKE_CURRENT_BINARY_DIR}/reference.grib ${CMAKE_CURRENT_BINARY_DIR}/allfields.00000001.grib
-)
+#ecbuild_add_test(
+#    TARGET       ${PREFIX}_${_test}_run
+#    TEST_DEPENDS ${PREFIX}_get_test_data ${PREFIX}_get_test_cfg
+#    COMMAND      secom
+#    ARGS         ${_arguments}
+#)
+#
+#ecbuild_add_test(
+#    TARGET       ${PREFIX}_${_test}_metadata
+#    TEST_DEPENDS ${PREFIX}_get_data ${PREFIX}_get_cache
+#    COMMAND      grib_compare -H
+#    ARGS         -H ${CMAKE_CURRENT_BINARY_DIR}/reference.grib ${CMAKE_CURRENT_BINARY_DIR}/allfields.00000001.grib
+#)

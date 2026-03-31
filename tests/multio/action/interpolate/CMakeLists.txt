@@ -1,10 +1,10 @@
-if(HAVE_MIR AND HAVE_MULTIO_BUILD_TOOLS)
+if( HAVE_MIR )
 
 set(PREFIX multio_tests_action_interpolate)
 
 ecbuild_get_test_multidata(
     TARGET   ${PREFIX}_get_data
-    DIRNAME  multio/test-data/tests/actions/interpolate
+    DIRNAME  multio/tests/actions/interpolate
     DIRLOCAL ${CMAKE_CURRENT_BINARY_DIR}
     NAMES
         "MARS_reduced_gg.grib"
@@ -63,40 +63,42 @@ foreach(_test
     endif()
 
     ecbuild_add_test(
-        TARGET        ${PREFIX}_${_test}_run
-        TEST_REQUIRES ${PREFIX}_get_data
-        ENVIRONMENT   ATLAS_ORCA_CACHING
-        COMMAND       multio-feed
+        TARGET       ${PREFIX}_${_test}_run
+        TEST_DEPENDS ${PREFIX}_get_data
+        ENVIRONMENT  ATLAS_ORCA_CACHING
+        COMMAND      multio-feed
         ARGS          --decode --plans=${CMAKE_CURRENT_SOURCE_DIR}/${_test}.yaml ${_feed})
 
     ecbuild_add_test(
-        TARGET        ${PREFIX}_${_test}_check_metadata
-        TEST_REQUIRES ${PREFIX}_${_test}_run
-        COMMAND       grib_compare
-        ARGS          -H ${_reference} ${_result})
+        TARGET       ${PREFIX}_${_test}_check_metadata
+        TEST_DEPENDS ${PREFIX}_${_test}_run
+        COMMAND      grib_compare
+        ARGS         -H ${_reference} ${_result})
 
     if(_test MATCHES ".*to_grid_.*[^a]$")
         # FIXME ignore values at the pole
         ecbuild_add_test(
-            TARGET        ${PREFIX}_${_test}_check_values
-            TEST_REQUIRES ${PREFIX}_${_test}_check_metadata
-            COMMAND       mir-compare
-            ARGS          ${_reference} ${_result} --ignore-above-latitude=89.9 --ignore-below-latitude=-89.9 --absolute-error=0.0001)
+            TARGET       ${PREFIX}_${_test}_check_values
+            TEST_DEPENDS ${PREFIX}_${_test}_check_metadata
+            COMMAND      mir-compare
+            ARGS         ${_reference} ${_result} --ignore-above-latitude=89.9 --ignore-below-latitude=-89.9 --absolute-error=0.0001)
     else()
         ecbuild_add_test(
-            TARGET        ${PREFIX}_${_test}_check_values
-            TEST_REQUIRES ${PREFIX}_${_test}_check_metadata
-            COMMAND       grib_compare
-            ARGS          -P -T10 ${_reference} ${_result})
+            TARGET       ${PREFIX}_${_test}_check_values
+            TEST_DEPENDS ${PREFIX}_${_test}_check_metadata
+            COMMAND      grib_compare
+            ARGS         -P -T10 ${_reference} ${_result})
     endif()
 endforeach()
+
+
 
 
 if ( HAVE_HEALPIX_EXAMPLES )
 
 ecbuild_get_test_multidata(
     TARGET   ${PREFIX}_get_HEALPix_data
-    DIRNAME  multio/test-data/tests/actions/interpolate
+    DIRNAME  multio/tests/actions/interpolate
     DIRLOCAL ${CMAKE_CURRENT_BINARY_DIR}
     NAMES
         "Reference_reduced_gg_to_HEALPix_32.grib"
@@ -168,35 +170,35 @@ foreach(_test
     endif()
 
     ecbuild_add_test(
-        TARGET        ${PREFIX}_${_test}_run
-        TEST_REQUIRES ${PREFIX}_get_data
-        ENVIRONMENT   ATLAS_ORCA_CACHING
-        COMMAND       multio-feed
+        TARGET       ${PREFIX}_${_test}_run
+        TEST_DEPENDS ${PREFIX}_get_data
+        ENVIRONMENT  ATLAS_ORCA_CACHING
+        COMMAND      multio-feed
         ARGS          --decode --plans=${CMAKE_CURRENT_SOURCE_DIR}/${_test}.yaml ${_feed})
 
     ecbuild_add_test(
-        TARGET        ${PREFIX}_${_test}_check_metadata
-        TEST_REQUIRES ${PREFIX}_${_test}_run
-        COMMAND       grib_compare
-        ARGS          -H ${_reference} ${_result})
+        TARGET       ${PREFIX}_${_test}_check_metadata
+        TEST_DEPENDS ${PREFIX}_${_test}_run
+        COMMAND      grib_compare
+        ARGS         -H ${_reference} ${_result})
 
     if(_test MATCHES ".*to_grid_.*[^a]$")
         # FIXME ignore values at the pole
         ecbuild_add_test(
-            TARGET        ${PREFIX}_${_test}_check_values
-            TEST_REQUIRES ${PREFIX}_${_test}_check_metadata
-            COMMAND       mir-compare
-            ARGS          ${_reference} ${_result} --ignore-above-latitude=89.9 --ignore-below-latitude=-89.9 --absolute-error=0.0001)
+            TARGET       ${PREFIX}_${_test}_check_values
+            TEST_DEPENDS ${PREFIX}_${_test}_check_metadata
+            COMMAND      mir-compare
+            ARGS         ${_reference} ${_result} --ignore-above-latitude=89.9 --ignore-below-latitude=-89.9 --absolute-error=0.0001)
     else()
         ecbuild_add_test(
-            TARGET        ${PREFIX}_${_test}_check_values
-            TEST_REQUIRES ${PREFIX}_${_test}_check_metadata
-            COMMAND       grib_compare
-            ARGS          -P -T10 ${_reference} ${_result})
+            TARGET       ${PREFIX}_${_test}_check_values
+            TEST_DEPENDS ${PREFIX}_${_test}_check_metadata
+            COMMAND      grib_compare
+            ARGS         -P -T10 ${_reference} ${_result})
     endif()
 endforeach()
 
 
 endif()
 
-endif()
+endif( HAVE_MIR )

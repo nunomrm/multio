@@ -17,11 +17,11 @@
 
 #include "eckit/config/YAMLConfiguration.h"
 #include "eckit/exception/Exceptions.h"
-#include "eckit/io/MemoryHandle.h"
 #include "eckit/message/Message.h"
 #include "eckit/serialisation/Stream.h"
 
-#include "eckit/message/MessageContent.h"
+#include "metkit/codes/CodesContent.h"
+#include "metkit/codes/UserDataContent.h"
 
 namespace multio {
 namespace message {
@@ -31,51 +31,35 @@ int Message::protocolVersion() {
 }
 
 std::string Message::tag2str(Tag t) {
-    static std::map<Tag, std::string> m = {{Tag::Empty, "Empty"},
-                                           {Tag::Open, "Open"},
-                                           {Tag::Close, "Close"},
-                                           {Tag::Domain, "Domain"},
-                                           {Tag::Mask, "Mask"},
-                                           {Tag::Field, "Field"},
-                                           {Tag::Flush, "Flush"},
-                                           {Tag::Notification, "Notification"},
-                                           {Tag::Parametrization, "Parametrization"},
-                                           {Tag::Synchronization, "Synchronization"}};
+    static std::map<Tag, std::string> m
+        = {{Tag::Empty, "Empty"}, {Tag::Open, "Open"},     {Tag::Close, "Close"},
+           {Tag::Grib, "Grib"},   {Tag::Domain, "Domain"}, {Tag::Mask, "Mask"},
+           {Tag::Field, "Field"}, {Tag::Flush, "Flush"},   {Tag::Notification, "Notification"}};
 
     ASSERT(t < Tag::ENDTAG);
 
-    auto tstr = m.find(t);
-    ASSERT(tstr != m.end());
-
-    return tstr->second;
+    return m.find(t)->second;
 }
 
 Message::Message() : Message(Message::Header{Message::Tag::Empty, Peer{}, Peer{}}) {}
 
-Message::Message(Header&& header) :
-    version_{protocolVersion()}, header_{std::move(header)}, payload_{PayloadReference{nullptr, 0}} {}
+Message::Message(Header&& header, const eckit::Buffer& payload) :
+    Message(std::make_shared<Header>(std::move(header)), std::make_shared<eckit::Buffer>(payload, payload.size())) {}
 
 Message::Message(Header&& header, eckit::Buffer&& payload) :
-    version_{protocolVersion()},
-    header_{std::move(header)},
-    payload_{std::make_shared<eckit::Buffer>(std::move(payload))} {}
-Message::Message(Header&& header, const eckit::Buffer& payload) :
-    version_{protocolVersion()},
-    header_{std::move(header)},
-    payload_{std::make_shared<eckit::Buffer>(payload.data(), payload.size())} {}
+    Message(std::make_shared<Header>(std::move(header)), std::make_shared<eckit::Buffer>(std::move(payload))) {}
 
-Message::Message(Header&& header, SharedPayload&& payload) :
+Message::Message(Header&& header, std::shared_ptr<eckit::Buffer> payload) :
+    Message(std::make_shared<Header>(std::move(header)), std::move(payload)) {}
+
+Message::Message(std::shared_ptr<Header>&& header, std::shared_ptr<eckit::Buffer>&& payload) :
     version_{protocolVersion()}, header_{std::move(header)}, payload_{std::move(payload)} {}
-Message::Message(Header&& header, const SharedPayload& payload) :
+
+Message::Message(std::shared_ptr<Header>&& header, const std::shared_ptr<eckit::Buffer>& payload) :
     version_{protocolVersion()}, header_{std::move(header)}, payload_{payload} {}
 
-
 const Message::Header& Message::header() const {
-    return header_;
-}
-
-Message::Header& Message::header() {
-    return header_;
+    return *header_;
 }
 
 int Message::version() const {
@@ -107,7 +91,7 @@ std::string Message::category() const {
     return header().category();
 }
 
-std::int64_t Message::globalSize() const {
+long Message::globalSize() const {
     return header().globalSize();
 }
 
@@ -119,37 +103,28 @@ const std::string& Message::fieldId() const {
     return header().fieldId();
 }
 
-const Metadata& Message::metadata() const {
-    return header_.metadata();
+const Metadata& Message::metadata() const& {
+    return header_->metadata();
 }
 
-Metadata& Message::modifyMetadata() {
-    return header_.modifyMetadata();
+// Metadata&& Message::metadata() && {
+//     return std::move(header_).metadata();
+// }
+
+Message Message::modifyMetadata(Metadata&& md) const {
+    return Message(std::make_shared<Header>(header_->modifyMetadata(std::move(md))), payload_);
+};
+
+const eckit::Buffer& Message::payload() const {
+    return *payload_;
 }
 
-SharedPayload& Message::payload() {
+std::shared_ptr<eckit::Buffer> Message::sharedPayload() const {
     return payload_;
-}
-
-const SharedPayload& Message::payload() const {
-    return payload_;
-}
-
-void Message::acquire() {
-    acquireMetadata();
-    acquirePayload();
-}
-
-void Message::acquirePayload() {
-    payload_.acquire();
-}
-
-void Message::acquireMetadata() {
-    header_.acquireMetadata();
 }
 
 size_t Message::size() const {
-    return payload_.size();
+    return payload_->size();
 }
 
 void Message::encode(eckit::Stream& strm) const {
@@ -167,60 +142,14 @@ void Message::print(std::ostream& out) const {
         << ")";
 }
 
-
-LogMessage Message::logMessage() const {
-    return LogMessage{version_, header_.logHeader(), payload_.size()};
-}
-
-
-const std::string& LogMessage::fieldId() const {
-    if (!header_.fieldId_) {
-        if (std::shared_ptr<Metadata> md = header_.metadata_.lock()) {
-            header_.fieldId_ = md->toString();
-        }
-        else {
-            header_.fieldId_ = "<context lost>";
-        }
-    }
-    return *header_.fieldId_;
-}
-
-void LogMessage::print(std::ostream& out) const {
-    out << "Message("
-        << "version=" << version_ << ", tag=" << Message::tag2str(header_.tag_) << ", source=" << header_.source_
-        << ", destination=" << header_.destination_ << ", metadata=" << fieldId() << ", payload-size=" << payload_size_
-        << ")";
-}
-
-
-namespace {
-
-class MultioDataContent : public eckit::message::MessageContent {
-public:
-    MultioDataContent(const void* data, size_t size) : data_(data), size_(size) {}
-
-protected:
-    const void* data_;
-    const size_t size_;
-
-    eckit::DataHandle* readHandle() const override { return new eckit::MemoryHandle(data_, size_); }
-    size_t length() const override { return size_; }
-    const void* data() const override { return data_; }
-    void write(eckit::DataHandle& handle) const override {
-        if (handle.write(data_, size_) != size_) {
-            std::ostringstream oss;
-            oss << "Write error to data handle " << handle;
-            throw eckit::WriteError(oss.str(), Here());
-        }
-    }
-    void print(std::ostream& s) const override { s << "MultioDataContent[]"; }
-};
-
-}  // namespace
-
 eckit::message::Message to_eckit_message(const Message& msg) {
+    if (msg.tag() == Message::Tag::Grib) {
+        codes_handle* h = codes_handle_new_from_message(nullptr, msg.payload().data(), msg.size());
+        return eckit::message::Message{new metkit::codes::CodesContent{h, true}};
+    }
+
     ASSERT(msg.tag() == Message::Tag::Field);
-    return eckit::message::Message{new MultioDataContent(msg.payload().data(), msg.size())};
+    return eckit::message::Message{new metkit::codes::UserDataContent(msg.payload().data(), msg.size())};
 }
 
 }  // namespace message

@@ -1,15 +1,11 @@
 
-if(HAVE_MULTIO_BUILD_TOOLS)
-
 list( APPEND _multio_server_tools
-  "multio-hammer" "multio-probe" "multio-encode-ocean"
-  "multio-replay-nemo-capi" "multio-replay-nemo-capi-partial-agg"
+    "multio-hammer" "multio-probe" "multio-encode-ocean"
 )
 
 foreach( tool ${_multio_server_tools} )
     ecbuild_add_executable( TARGET ${tool}
                             SOURCES ${tool}.cc MultioTool.cc
-                            NO_AS_NEEDED
                             LIBS multio-api )
 endforeach()
 
@@ -44,46 +40,26 @@ ecbuild_add_executable( TARGET    multio-legacy-hammer
 
 # tools for testing the multio API
 
+ecbuild_add_executable( TARGET      multio-replay-nemo-capi
+                        SOURCES     multio-replay-nemo-capi.cc MultioTool.cc
+                        LIBS        multio-api )
+
 ecbuild_add_executable( TARGET    multio-feed
                         CONDITION HAVE_FDB5
                         SOURCES   multio-feed.cc MultioTool.cc
-                        NO_AS_NEEDED
                         LIBS      multio-api )
 
+# TODO ADD SOME FCKIT condition
 ecbuild_add_executable( TARGET    multio-replay-nemo-fapi
                         CONDITION HAVE_FORTRAN
                         SOURCES   multio-replay-nemo-fapi.f90
-                        LIBS      multio-fapi fckit )
+                        LIBS      multio-fapi fckit MPI::MPI_Fortran )
 
 # TODO: add atlas condition/dependency
 ecbuild_add_executable( TARGET    multio-generate-grib-template
                         SOURCES   multio-generate-grib-template.cc MultioTool.cc
                         LIBS      multio atlas eccodes eckit )
 
-ecbuild_add_executable( TARGET    multio-convert-trace-log
-                        SOURCES   multio-convert-trace-log.cc MultioTool.cc
-                        LIBS      multio eckit )
-
-endif()
-
-ecbuild_add_executable(
-
-  TARGET
-      grib1-to-grib2
-
-  CONDITION
-    HAVE_GRIB1_TO_GRIB2
-
-  SOURCES
-      grib1-to-grib2.cc
-      MultioTool.cc
-
-  NO_AS_NEEDED
-
-  LIBS
-      multio
-      multio-mars2mars
-      eckit
-      metkit
-      eccodes
-)
+ecbuild_add_executable( TARGET      multio-replay-nemo-capi-partial-agg
+                        SOURCES     multio-replay-nemo-capi-partial-agg.cc MultioTool.cc
+                        LIBS        multio-api )

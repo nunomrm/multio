@@ -11,17 +11,18 @@
 #include "Transport.h"
 
 #include <algorithm>
-#include <sstream>
 
 #include "eckit/config/Resource.h"
 
 #include "multio/transport/TransportRegistry.h"
 #include "multio/util/Environment.h"
+#include "multio/util/ScopedTimer.h"
+#include "multio/util/logfile_name.h"
 
-namespace multio::action::transport {
+namespace multio::action {
 
 using message::Message;
-using message::MetadataTypes;
+using transport::TransportRegistry;
 
 namespace {
 size_t serverIdDenom(size_t clientCount, size_t serverCount) {
@@ -34,12 +35,11 @@ std::vector<std::string> getHashKeys(const eckit::Configuration& conf) {
     }
     return std::vector<std::string>{"category", "name", "level"};
 }
-
 }  // namespace
 
 Transport::Transport(const ComponentConfiguration& compConf) :
     Action{compConf},
-    transport_{multio::transport::TransportRegistry::instance().get(compConf)},
+    transport_{TransportRegistry::instance().get(compConf)},
     client_{transport_->localPeer()},
     serverPeers_{transport_->serverPeers()},
     serverCount_{serverPeers_.size()},
@@ -50,13 +50,14 @@ Transport::Transport(const ComponentConfiguration& compConf) :
     distType_{distributionType()} {}
 
 void Transport::executeImpl(Message msg) {
-    util::ScopedTiming timing{statistics_.actionTiming_};
+    // eckit::Log::info() << "Execute transport action for message " << msg << std::endl;
+    util::ScopedTiming timing{statistics_.localTimer_, statistics_.actionTiming_};
 
     auto md = msg.metadata();
-    if (md.get<bool>("toAllServers")) {
+    if (md.getBool("toAllServers")) {
         for (auto& server : serverPeers_) {
             auto md = msg.metadata();
-            Message trMsg{Message::Header{msg.tag(), client_, *server, std::move(md)}, msg.payload()};
+            Message trMsg{Message::Header{msg.tag(), client_, *server, std::move(md)}, msg.sharedPayload()};
 
             transport_->bufferedSend(trMsg);
         }
@@ -64,7 +65,7 @@ void Transport::executeImpl(Message msg) {
     else {
         auto server = chooseServer(msg.metadata());
 
-        Message trMsg{Message::Header{msg.tag(), client_, server, std::move(md)}, msg.payload()};
+        Message trMsg{Message::Header{msg.tag(), client_, server, std::move(md)}, msg.sharedPayload()};
 
         transport_->bufferedSend(trMsg);
     }
@@ -77,26 +78,20 @@ void Transport::print(std::ostream& os) const {
 message::Peer Transport::chooseServer(const message::Metadata& metadata) {
     ASSERT_MSG(serverCount_ > 0, "No server to choose from");
 
-    auto getMetadataValue = [&](const std::string& hashKey) -> const message::MetadataValue& {
-        auto searchHashKey = metadata.find(hashKey);
-        if (searchHashKey == metadata.end()) {
+    auto getMetadataValue = [&](const std::string& hashKey) {
+        if (!metadata.has(hashKey)) {
             std::ostringstream os;
             os << "The hash key \"" << hashKey << "\" is not defined in the metadata object: " << metadata << std::endl;
-            throw multio::transport::TransportException(os.str(), Here());
+            throw transport::TransportException(os.str(), Here());
         }
-        return searchHashKey->second;
+        return metadata.getString(hashKey);
     };
 
     auto constructHash = [&]() {
         std::ostringstream os;
 
         for (const std::string& s : hashKeys_) {
-            getMetadataValue(s).visit(eckit::Overloaded{
-                [&s](const auto& v) -> util::IfTypeNotOf<decltype(v), MetadataTypes::Scalars> {
-                    throw message::MetadataWrongTypeException(s, Here());
-                },
-                [&os](const auto& v) -> util::IfTypeOf<decltype(v), MetadataTypes::Scalars> { os << v; },
-            });
+            os << getMetadataValue(s);
         }
         return os.str();
     };
@@ -155,20 +150,19 @@ Transport::DistributionType Transport::distributionType() {
 
     const char* envVar = "MULTIO_SERVER_DISTRIBUTION";
     auto key = util::getEnv(envVar);
-    if (!key) {
+    if (!key)
         return DistributionType::hashed_to_single;
-    }
 
     auto it = str2dist.find(*key);
     if (it == str2dist.end()) {
         std::ostringstream oss;
         oss << "Transport::distributionType(): Unsupported distribution type \"" << (*key)
             << "\" read from environment variable " << envVar << std::endl;
-        throw multio::transport::TransportException(oss.str(), Here());
+        throw transport::TransportException(oss.str(), Here());
     }
     return it->second;
 }
 
 static ActionBuilder<Transport> TransportBuilder("transport");
 
-}  // namespace multio::action::transport
+}  // namespace multio::action

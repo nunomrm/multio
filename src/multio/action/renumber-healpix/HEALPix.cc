@@ -21,8 +21,6 @@
 #include <iostream>
 #include <tuple>
 
-namespace multio::action::renumber_healpix {
-
 namespace {
 
 
@@ -198,5 +196,3 @@ int HEALPix::nest_to_ring(int n) const {
 
     return r0 + to_ring_local(f, i, j, Nring, 0);
 }
-
-}  // namespace multio::action::renumber_healpix

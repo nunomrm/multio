@@ -1,10 +1,10 @@
 #include "TimeUtils.h"
 
-namespace multio::action::statistics {
+namespace multio::action {
 
 eckit::DateTime epochDateTime(const message::Message& msg, const StatisticsConfiguration& cfg) {
-    eckit::Date startDate{cfg.date()};
-    long startTime = cfg.time();
+    eckit::Date startDate{cfg.startDate()};
+    long startTime = cfg.startTime();
     auto hour = startTime / 10000;
     auto minute = (startTime % 10000) / 100;
     return eckit::DateTime{startDate, eckit::Time{hour, minute, 0}};
@@ -26,7 +26,7 @@ eckit::DateTime nextDateTime(const message::Message& msg, const StatisticsConfig
 }
 
 eckit::DateTime winStartDateTime(const message::Message& msg, const StatisticsConfiguration& cfg) {
-    return cfg.options().solver_send_initial_condition() ? currentDateTime(msg, cfg) : prevDateTime(msg, cfg);
+    return cfg.solver_send_initial_condition() ? currentDateTime(msg, cfg) : prevDateTime(msg, cfg);
 }
 
 
@@ -85,4 +85,4 @@ bool isBeginningOfHour(const message::Message& msg, const StatisticsConfiguratio
 }
 
 
-}  // namespace multio::action::statistics
+}  // namespace multio::action

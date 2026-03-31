@@ -1,15 +1,14 @@
 ecbuild_add_library(
 
-    TARGET multio-action-single-field-sink
-
-    TYPE SHARED # Due to reliance on factory self registration this library cannot be static
+	TARGET multio-action-single-field-sink
 
     SOURCES
-        SingleFieldSink.cc
-        SingleFieldSink.h
+    	SingleFieldSink.cc
+    	SingleFieldSink.h
+
 
     PRIVATE_INCLUDES
-        ${ECKIT_INCLUDE_DIRS}
+      ${ECKIT_INCLUDE_DIRS}
 
     CONDITION
 

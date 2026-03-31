@@ -14,9 +14,6 @@
 
 #pragma once
 
-namespace multio::action::renumber_healpix {
-
-
 class HEALPix {
 public:
     explicit HEALPix(int Nside);
@@ -33,6 +30,3 @@ private:
     const int Ncap_;
     const int k_;
 };
-
-
-}  // namespace multio::action::renumber_healpix

@@ -16,12 +16,11 @@ ecbuild_add_library(
         ${ECKIT_INCLUDE_DIRS}
 
     CONDITION
-        HAVE_ECKIT_CODEC
+        HAVE_ATLAS_IO
 
     PUBLIC_LIBS
         multio
-        eckit
-        eckit_codec
+        atlas_io
 )
 
 
@@ -39,12 +38,12 @@ ecbuild_add_executable(
         InterpolateFesom.h
 
     CONDITION
-        HAVE_ECKIT_CODEC AND HAVE_MULTIO_BUILD_TOOLS
+        HAVE_ATLAS_IO
 
     LIBS
         multio
+        atlas_io
         eckit
-        eckit_codec
 )
 
 ecbuild_add_executable(
@@ -60,12 +59,12 @@ ecbuild_add_executable(
         InterpolateFesom.h
 
     CONDITION
-        HAVE_ECKIT_CODEC AND HAVE_MULTIO_BUILD_TOOLS
+        HAVE_ATLAS_IO
 
     LIBS
         multio
+        atlas_io
         eckit
-        eckit_codec
 )
 
 ecbuild_add_executable(
@@ -81,10 +80,10 @@ ecbuild_add_executable(
         InterpolateFesom.h
 
     CONDITION
-        HAVE_ECKIT_CODEC AND HAVE_MULTIO_BUILD_TOOLS
+        HAVE_ATLAS_IO
 
     LIBS
         multio
+        atlas_io
         eckit
-        eckit_codec
 )

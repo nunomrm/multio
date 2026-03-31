@@ -21,9 +21,6 @@ namespace multio::transport {
 ThreadPeer::ThreadPeer(std::thread t) :
     Peer{"thread", std::hash<std::thread::id>{}(t.get_id())}, thread_{std::move(t)} {}
 
-void ThreadPeer::join() {
-    thread_.join();
-}
 
 ThreadTransport::ThreadTransport(const ComponentConfiguration& compConf) :
     Transport(compConf),
@@ -37,10 +34,9 @@ void ThreadTransport::closeConnections() {
     throw eckit::NotImplemented{Here()};
 }
 
-
 Message ThreadTransport::receive() {
 
-    const Peer& receiver = localPeer();
+    Peer receiver = localPeer();
 
     auto& queue = receiveQueue(receiver);
 
@@ -64,13 +60,8 @@ void ThreadTransport::bufferedSend(const Message&) {
     throw eckit::NotImplemented{Here()};
 }
 
-void ThreadTransport::synchronize() {
-    throw eckit::NotImplemented{Here()};
-}
-
-const Peer& ThreadTransport::localPeer() const {
-    thread_local static Peer peer{"thread", std::hash<std::thread::id>{}(std::this_thread::get_id())};
-    return peer;
+Peer ThreadTransport::localPeer() const {
+    return Peer{"thread", std::hash<std::thread::id>{}(std::this_thread::get_id())};
 }
 
 PeerList ThreadTransport::createServerPeers() const {
@@ -96,11 +87,11 @@ eckit::Queue<Message>& ThreadTransport::receiveQueue(Peer dest) {
         return *qitr->second;
     }
 
-    auto q = queues_.emplace(dest, std::make_unique<eckit::Queue<Message>>(messageQueueSize_)).first;
+    queues_.emplace(dest, std::make_unique<eckit::Queue<Message>>(messageQueueSize_));
 
-    eckit::Log::debug<LibMultio>() << "ADD QUEUE for " << dest << " --- " << q->second.get() << std::endl;
+    eckit::Log::debug<LibMultio>() << "ADD QUEUE for " << dest << " --- " << queues_.at(dest).get() << std::endl;
 
-    return *q->second.get();
+    return *queues_.at(dest);
 }
 
 static TransportBuilder<ThreadTransport> ThreadTransportBuilder("thread");

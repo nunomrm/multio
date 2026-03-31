@@ -23,13 +23,13 @@
 #include "eckit/filesystem/PathName.h"
 #include "eckit/log/Log.h"
 
-#include "eckit/codec/codec.h"
+#include "atlas_io/atlas-io.h"
 
 #include "multio/LibMultio.h"
 #include "multio/util/PrecisionTag.h"
 #include "multio/util/Substitution.h"
 
-namespace multio::action::renumber_healpix {
+namespace multio::action {
 
 namespace {
 std::string parseCacheFileName(const ComponentConfiguration& compConf) {
@@ -43,7 +43,7 @@ std::string parseCacheFileName(const ComponentConfiguration& compConf) {
     }
 
     // Expand file name
-    const auto cacheFileName = cfg.getString("cache-file-name");
+    const auto cacheFileName = compConf.multioConfig().replaceCurly(cfg.getString("cache-file-name"));
 
     // Check existence of the cache file
     eckit::PathName tmp{cacheFileName};
@@ -57,45 +57,38 @@ std::string parseCacheFileName(const ComponentConfiguration& compConf) {
 }
 
 void checkMetadata(const message::Metadata& md) {
-    auto searchGridType = md.find("gridType");
-    if (searchGridType == md.end()) {
+    if (!md.has("gridType")) {
         std::ostringstream oss;
         oss << "HEALPix_ring2nest: expected \"gridType\" option" << std::endl;
         throw eckit::UserError(oss.str(), Here());
     }
-
-    auto searchNSide = md.find("Nside");
-    if (searchNSide == md.end()) {
+    if (!md.has("Nside")) {
         std::ostringstream oss;
         oss << "HEALPix_ring2nest: expected \"Nside\" option" << std::endl;
         throw eckit::UserError(oss.str(), Here());
     }
-
-    auto searchOrderingConvention = md.find("orderingConvention");
-    if (searchOrderingConvention == md.end()) {
+    if (!md.has("orderingConvention")) {
         std::ostringstream oss;
         oss << "HEALPix_ring2nest: expected \"orderingConvention\" option" << std::endl;
         throw eckit::UserError(oss.str(), Here());
     }
-    if (const std::string& gridType = searchGridType->second.get<std::string>();
-        gridType != "healpix" && gridType != "HEALPix") {
+    if (md.getString("gridType") != "healpix" && md.getString("gridType") != "HEALPix") {
         std::ostringstream oss;
-        oss << "HEALPix_ring2nest: expected \"gridType\" = \"HEALPix\", instead it is equal to: " << gridType
-            << std::endl;
+        oss << "HEALPix_ring2nest: expected \"gridType\" = \"HEALPix\", instead it is equal to: "
+            << md.getString("gridType") << std::endl;
         throw eckit::UserError(oss.str(), Here());
     }
-    if (const std::string& orderingConvention = searchOrderingConvention->second.get<std::string>();
-        orderingConvention != "ring") {
+    if (md.getString("orderingConvention") != "ring") {
         std::ostringstream oss;
         oss << "HEALPix_ring2nest: expected \"orderingConvention\" = \"ring\", instead it is equal to: "
-            << orderingConvention << std::endl;
+            << md.getString("orderingConvention") << std::endl;
         throw eckit::UserError(oss.str(), Here());
     }
 }
 
 std::vector<size_t> makeMapping(size_t Nside, const std::string& cacheFileName) {
     std::vector<size_t> map;
-    eckit::codec::RecordReader reader(cacheFileName);
+    atlas::io::RecordReader reader(cacheFileName);
     std::ostringstream os;
     os << "H" << std::setfill('0') << std::setw(8) << Nside << "_ring2nest";
     reader.read(os.str(), map).wait();
@@ -114,6 +107,7 @@ HEALPixRingToNest::HEALPixRingToNest(const ComponentConfiguration& compConf) :
 
 
 void HEALPixRingToNest::executeImpl(message::Message msg) {
+
     // Bypass if it is not a field
     if (msg.tag() != message::Message::Tag::Field) {
         executeNext(msg);
@@ -123,9 +117,9 @@ void HEALPixRingToNest::executeImpl(message::Message msg) {
     checkMetadata(msg.metadata());
 
     // Lookup cache
-    auto key = static_cast<size_t>(msg.metadata().get<std::int64_t>("Nside"));
+    auto key = static_cast<size_t>(msg.metadata().getLong("Nside"));
     if (mapping_.find(key) == mapping_.end()) {
-        mapping_[key] = makeMapping(static_cast<size_t>(msg.metadata().get<std::int64_t>("Nside")), cacheFileName_);
+        mapping_[key] = makeMapping(static_cast<size_t>(msg.metadata().getLong("Nside")), cacheFileName_);
     }
     const auto& map = mapping_.at(key);
 
@@ -144,4 +138,4 @@ void HEALPixRingToNest::print(std::ostream& os) const {
 
 static ActionBuilder<HEALPixRingToNest> HEALPixRingToNestBuilder("renumber-healpix");
 
-}  // namespace multio::action::renumber_healpix
+}  // namespace multio::action

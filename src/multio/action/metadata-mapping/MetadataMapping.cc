@@ -1,6 +1,6 @@
 #include "MetadataMapping.h"
 
-namespace multio::action::metadata_mapping {
+namespace multio::action {
 
 namespace {
 std::string getMappingName(const ComponentConfiguration& compConf) {
@@ -25,17 +25,11 @@ MetadataMapping::MetadataMapping(const ComponentConfiguration& compConf) :
 void MetadataMapping::executeImpl(message::Message msg) {
     switch (msg.tag()) {
         case (message::Message::Tag::Field): {
-            // TODO optimize for mappings that do not have to match and avoid copying medata
-
-            // Get own copy of metadata in the message
-            msg.header().acquireMetadata();
-
-            applyInplace(msg.modifyMetadata());
-            executeNext(std::move(msg));
+            executeNext(msg.modifyMetadata(apply(std::move(msg).metadata())));
             break;
         }
         default: {
-            executeNext(std::move(msg));
+            executeNext(msg);
             break;
         }
     };
@@ -46,6 +40,16 @@ void MetadataMapping::applyInplace(message::Metadata& md) const {
         m.applyInplace(md, options_);
     }
 };
+message::Metadata MetadataMapping::apply(const message::Metadata& md) const {
+    message::Metadata mdc(md);
+    applyInplace(mdc);
+    return mdc;
+};
+message::Metadata MetadataMapping::apply(message::Metadata&& md) const {
+    message::Metadata mdc(std::move(md));
+    applyInplace(mdc);
+    return mdc;
+};
 
 void MetadataMapping::print(std::ostream& os) const {
     os << "MetadataMapping(mapping=" << (name_) << ", enforce-match=" << (options_.enforceMatch ? "true" : "false")
@@ -54,4 +58,4 @@ void MetadataMapping::print(std::ostream& os) const {
 
 
 static ActionBuilder<MetadataMapping> MetadataMappingBuilder("metadata-mapping");
-}  // namespace multio::action::metadata_mapping
+}  // namespace multio::action

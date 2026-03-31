@@ -14,9 +14,8 @@
 
 #pragma once
 
+#include "multio/config/ConfigurationPath.h"
 #include "multio/config/MetadataMappings.h"
-#include "multio/config/PathConfiguration.h"
-#include "multio/message/Message.h"
 
 #include "eckit/config/LocalConfiguration.h"
 
@@ -26,11 +25,10 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <queue>
 #include <tuple>
 #include <unordered_map>
 
-//-----------------------------------------------------------------------------
+//=============================================================================
 
 namespace multio::config {
 
@@ -53,19 +51,19 @@ struct Translator<multio::config::LocalPeerTag, std::string> {
 }  // namespace eckit
 
 
-//-----------------------------------------------------------------------------
+//=============================================================================
 
 
 namespace multio::config {
 
-//-----------------------------------------------------------------------------
+//=============================================================================
 
 struct ConfigFile {
     eckit::LocalConfiguration content;
     eckit::PathName source;
 };
 
-//-----------------------------------------------------------------------------
+//=============================================================================
 
 struct MPIInitInfo {
     std::optional<int> parentComm{};
@@ -76,7 +74,7 @@ struct MPIInitInfo {
     bool allowWorldAsDefault{true};
 };
 
-//-----------------------------------------------------------------------------
+//=============================================================================
 
 // Struct for guided construction
 struct ConfigAndPaths {
@@ -89,9 +87,9 @@ struct ConfigAndPaths {
 
 
 class MultioConfiguration {
-public:
-    MultioConfiguration(ConfigAndPaths, LocalPeerTag clientOrServer = LocalPeerTag::Client);
+    MultioConfiguration(ConfigAndPaths, LocalPeerTag clientOrServer);
 
+public:
     // Default constructor is configuring from environment variables
     MultioConfiguration(LocalPeerTag clientOrServer = LocalPeerTag::Client);
 
@@ -130,16 +128,12 @@ public:
     MultioConfiguration(MultioConfiguration&& other) = default;
     MultioConfiguration& operator=(MultioConfiguration&& other) = default;
 
-    std::queue<message::Message>& debugSink() const;
 
 private:
     MultioConfiguration(const eckit::PathName& configDir, const eckit::PathName& configFile,
                         LocalPeerTag clientOrServer = LocalPeerTag::Client);
     MultioConfiguration(const eckit::LocalConfiguration& globalConfig, const eckit::PathName& configDir,
                         const eckit::PathName& configFile, LocalPeerTag clientOrServer = LocalPeerTag::Client);
-
-    void replaceAllCurly(eckit::LocalConfiguration& cfg) const;
-    eckit::LocalConfiguration replaceAllCurly(const eckit::LocalConfiguration& cfg) const;
 
     eckit::LocalConfiguration parsedConfig_;
     eckit::PathName configDir_;
@@ -150,12 +144,9 @@ private:
 
     mutable std::unordered_map<std::string, ConfigFile> referencedConfigFiles_;
     MetadataMappings metadataMappings_;
-
-    // Ugly way to retrieve messages through a debug sink
-    mutable std::queue<message::Message> debugSink_;
 };
 
-//-----------------------------------------------------------------------------
+//=============================================================================
 
 
 class MultioConfigurationHolder {
@@ -169,6 +160,6 @@ public:
     MultioConfiguration& multioConfig() noexcept;
 };
 
-//-----------------------------------------------------------------------------
+//=============================================================================
 
 }  // namespace multio::config

@@ -2,7 +2,7 @@ mappings:
   - match:
       nemoParam: nemo-id
     map:
-      paramId: param-id
+      param: param-id
       unstructuredGridSubtype: unstructured-grid-subtype
       domain: domain
       gridType: grid-type
@@ -285,7 +285,7 @@ data:
     grid-type: "unstructured_grid"
     domain : "T grid"
     unstructured-grid-subtype : "T"
-    level-type : "depthBelowSeaLayer"
+    level-type : "oceanDepthLayer"
 
   # Integral of sea water practical salinity in the upper 700m
   - nemo-id : sal700
@@ -293,7 +293,7 @@ data:
     grid-type: "unstructured_grid"
     domain : "T grid"
     unstructured-grid-subtype : "T"
-    level-type : "depthBelowSeaLayer"
+    level-type : "oceanDepthLayer"
 
   # Integral of sea water practical salinity in the total water column
   - nemo-id : salbtm
@@ -309,7 +309,7 @@ data:
     grid-type: "unstructured_grid"
     domain : "T grid"
     unstructured-grid-subtype : "T"
-    level-type : "depthBelowSeaLayer"
+    level-type : "oceanDepthLayer"
 
   # Water column integrated heat content in the upper 700m
   - nemo-id : hc700
@@ -317,7 +317,7 @@ data:
     grid-type: "unstructured_grid"
     domain : "T grid"
     unstructured-grid-subtype : "T"
-    level-type : "depthBelowSeaLayer"
+    level-type : "oceanDepthLayer"
 
   # Water column integrated heat content in the total water column
   - nemo-id : hcbtm
@@ -577,7 +577,7 @@ data:
 
   # Surface X component of sea water velocity
   - nemo-id : ssu
-    param-id : 262138
+    param-id : 262137
     grid-type: "unstructured_grid"
     domain : "U grid"
     unstructured-grid-subtype : "U"
@@ -589,7 +589,7 @@ data:
 
   # Surface Y component of sea water velocity
   - nemo-id : ssv
-    param-id : 262137
+    param-id : 262138
     grid-type: "unstructured_grid"
     domain : "V grid"
     unstructured-grid-subtype : "V"
@@ -774,14 +774,6 @@ data:
   # Sea-ice growth
   - nemo-id : vfxice
     param-id : 262007
-    grid-type: "unstructured_grid"
-    domain : "T grid"
-    unstructured-grid-subtype : "T"
-    level-type : "iceLayerOnWater"
-
-  # Sea-ice breakup memory
-  - nemo-id : icebreak
-    param-id : 262025
     grid-type: "unstructured_grid"
     domain : "T grid"
     unstructured-grid-subtype : "T"

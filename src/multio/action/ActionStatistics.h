@@ -3,17 +3,20 @@
 
 #include <iosfwd>
 
-#include "multio/util/Timing.h"
+#include "eckit/log/Statistics.h"
 
-namespace multio::action {
+namespace multio {
+namespace action {
 
 class ActionStatistics : public eckit::Statistics {
 public:
     ActionStatistics();
 
-    util::Timing<> actionTiming_;
+    eckit::Timing actionTiming_;
+    eckit::Timer localTimer_;  // Remove it once eckit::Statistics is fixed
 
-    void report(std::ostream& out, const std::string& type = "Action", const char* indent = "");
+    void report(std::ostream& out, const std::string& type = "Action", const char* indent = "") const;
 };
 
-}  // namespace multio::action
+}  // namespace action
+}  // namespace multio

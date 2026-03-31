@@ -19,7 +19,7 @@ client:
       actions:
         - type: select
           match:
-           - category: [ocean-domain-map, ocean-mask, parametrization]
+           - category: [ocean-domain-map, ocean-mask]
 
         - type: transport
           target: server

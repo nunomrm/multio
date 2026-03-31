@@ -12,13 +12,6 @@ multio is a package developed by ECMWF that provides an application programming 
 The fundamental design principle behind multio is that data is decoupled from metadata, and that the
 metadata is used for routing the data through the post-processing pipelines.
 
-
-Documentation
--------------
-
-The documentation can be found at https://multio.readthedocs.io.
-
-
 Requirements
 ------------
 
@@ -39,7 +32,6 @@ Build dependencies:
 - ecbuild -- ECMWF library of CMake macros (available via apt or see https://github.com/ecmwf/ecbuild)
 - MPI -- an implementation of MPI may be required for the I/O-server functionality, see https://www.mpi-forum.org/
 
-
 Installation
 ------------
 
@@ -54,39 +46,28 @@ Now proceed with installation as follows.
    srcdir=$(pwd)
    builddir=build
    installdir=$HOME/local
-   ```
+```
 
 2. Run Cmake/ecbuild
    ```bash
    ecbuild --prefix=$installdir -- -DCMAKE_PREFIX_PATH=<path/to/dependencies/install> $srcdir
    ```
-
    The package is in active development and the I/O-server functionality is not enabled by default, so
    it needs to be turned on explicitly. In addition, if built with FDB support, some compilers will
    require linking to be forced.
    ```bash
    ecbuild --prefix=$installdir -- -DCMAKE_PREFIX_PATH=<path/to/dependencies/install> -DECBUILD_EXE_LINKER_FLAGS=-Wl,--no-as-needed $srcdir
-   ```
+```
 
 3. Compile, test and install
    ```bash
    make -j10
    ctest
    make install
-   ```
-
-
-GIT hooks
----------
-
-Please run the following command in the project root to use our git hooks:
-```bash
-git config core.hooksPath .githooks
 ```
 
-
 Copyright and license
----------------------
+------------
 
 (C) Copyright 2005- ECMWF.
 

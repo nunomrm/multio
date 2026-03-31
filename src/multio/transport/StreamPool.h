@@ -23,7 +23,7 @@ public:
 
     MpiOutputStream& getStream(const message::Message& msg);
 
-    void sendBuffer(const message::Peer& dest);
+    void sendBuffer(const message::Peer& dest, int msg_tag);
 
     MpiBuffer& acquireAvailableBuffer(BufferStatus newStatus, std::ostream& os = eckit::Log::debug<LibMultio>());
 
@@ -31,6 +31,7 @@ public:
 
 private:
     MpiOutputStream& createNewStream(const message::Peer& dest);
+    MpiOutputStream& replaceStream(const message::Peer& dest);
 
     void print(std::ostream& os) const;
 

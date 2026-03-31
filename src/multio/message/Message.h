@@ -11,7 +11,6 @@
 /// @author Domokos Sarmany
 /// @author Simon Smart
 /// @author Tiago Quintino
-/// @author Philipp Geier
 
 /// @date Jan 2019
 
@@ -22,13 +21,11 @@
 
 #include "multio/message/Metadata.h"
 #include "multio/message/Peer.h"
-#include "multio/message/SharedMetadata.h"
-#include "multio/message/SharedPayload.h"
-#include "multio/datamod/Glossary.h"
 
 #include <memory>
 #include <optional>
 #include <string>
+
 
 namespace eckit {
 class Stream;
@@ -40,9 +37,7 @@ class Message;
 
 namespace multio::message {
 
-namespace dm = multio::datamod;
-
-struct LogMessage;
+// TODO: we may want to hash the payload (and the header?)
 
 class Message {
 public:  // types
@@ -57,35 +52,13 @@ public:  // types
         Field,
         Flush,
         Notification,
-        Parametrization,
-        Synchronization,
         ENDTAG
-    };
-
-
-    struct LogHeader {
-        Tag tag_;
-
-        Peer source_;
-        Peer destination_;
-
-        std::weak_ptr<Metadata> metadata_;
-        mutable std::optional<std::string> fieldId_;
     };
 
     class Header {
     public:
-        Header(const Header&) = default;
-        Header(Header&&) = default;
-
-        Header& operator=(const Header&) = default;
-        Header& operator=(Header&&) = default;
-
         Header(Tag tag, Peer src, Peer dst, std::string&& fieldId);
-        Header(Tag tag, Peer src, Peer dst, Metadata&& md);
-        // TODO optimize default construction - avoid make shared to optimize cases of default initialization +
-        // assignment
-        Header(Tag tag, Peer src, Peer dst, SharedMetadata md = SharedMetadata{});
+        Header(Tag tag, Peer src, Peer dst, Metadata&& md = message::Metadata{});
 
         Tag tag() const;
 
@@ -96,7 +69,7 @@ public:  // types
 
         std::string category() const;
 
-        std::int64_t globalSize() const;
+        long globalSize() const;
 
         std::string domain() const;
 
@@ -106,18 +79,10 @@ public:  // types
 
         void encode(eckit::Stream& strm) const;
 
-        const Metadata& metadata() const;
+        // Metadata&& metadata() &&;
+        const Metadata& metadata() const&;
 
-        Metadata& modifyMetadata();
-
-
-        // Copy or acquire metadata object if only owned by this object
-        SharedMetadata moveOrCopyMetadata() const;
-
-        // Copy or acquire metadata object if only owned by this object
-        void acquireMetadata();
-
-        LogHeader logHeader() const;
+        Header modifyMetadata(Metadata&& md) const;
 
     private:
         Tag tag_;
@@ -125,34 +90,42 @@ public:  // types
         Peer source_;
         Peer destination_;
 
-        SharedMetadata metadata_;
+        Metadata metadata_;
         // encode fieldId_ lazily
         mutable std::optional<std::string> fieldId_;  // Make that a hash?
     };
 
+    // class Content {
+    // public:
+    //     Content(Header&& header, const eckit::Buffer& payload = eckit::Buffer(0));
+    //     Content(Header&& header, eckit::Buffer&& payload);
+
+    //     size_t size() const;
+
+    //     const Header& header();
+
+    //     eckit::Buffer& payload();
+    //     const eckit::Buffer& payload() const;
+
+    // private:
+    //     const Header header_;
+    //     eckit::Buffer payload_;
+    // };
 
 public:  // methods
     static int protocolVersion();
     static std::string tag2str(Tag t);
 
-    Message(const Message&) = default;
-    Message(Message&&) = default;
-
-    Message& operator=(const Message&) = default;
-    Message& operator=(Message&&) = default;
-
     Message();
-    Message(Header&& header);
-    Message(Header&& header, const eckit::Buffer& payload);
+    Message(Header&& header, const eckit::Buffer& payload = eckit::Buffer{0});
     Message(Header&& header, eckit::Buffer&& payload);
-    Message(Header&& header, SharedPayload&& payload);
-    Message(Header&& header, const SharedPayload& payload);
-
-    LogMessage logMessage() const;
+    Message(Header&& header, std::shared_ptr<eckit::Buffer> payload);
+    Message(std::shared_ptr<Header>&& header, std::shared_ptr<eckit::Buffer>&& payload);
+    Message(std::shared_ptr<Header>&& header, const std::shared_ptr<eckit::Buffer>& payload);
+    // Message(std::shared_ptr<Header> header, std::shared_ptr<eckit::Buffer> payload);
 
 public:
     const Header& header() const;
-    Header& header();
 
     int version() const;
     Tag tag() const;
@@ -166,7 +139,7 @@ public:
 
     util::PrecisionTag precision() const;
 
-    std::int64_t globalSize() const;
+    long globalSize() const;
 
     std::string domain() const;
 
@@ -174,17 +147,13 @@ public:
 
     // Metadata&& metadata() &&;
 
-    const Metadata& metadata() const;
-    Metadata& modifyMetadata();
+    const Metadata& metadata() const&;
 
-    SharedPayload& payload();
-    const SharedPayload& payload() const;
+    Message modifyMetadata(Metadata&& md) const;
 
-    // Try to acquire metadata & payload or copy otherwise
-    void acquire();
+    const eckit::Buffer& payload() const;
 
-    void acquireMetadata();
-    void acquirePayload();
+    std::shared_ptr<eckit::Buffer> sharedPayload() const;
 
     size_t size() const;
 
@@ -201,26 +170,9 @@ private:  // methods
 private:  // members
     int version_;
 
-    Header header_;
-    SharedPayload payload_;
+    std::shared_ptr<Header> header_;
+    std::shared_ptr<eckit::Buffer> payload_;
 };
-
-
-struct LogMessage {
-    int version_;
-
-    Message::LogHeader header_;
-    std::size_t payload_size_;
-
-    const std::string& fieldId() const;
-    void print(std::ostream& out) const;
-
-    friend std::ostream& operator<<(std::ostream& s, const LogMessage& x) {
-        x.print(s);
-        return s;
-    }
-};
-
 
 eckit::message::Message to_eckit_message(const Message& msg);
 
@@ -232,8 +184,10 @@ message::Message convert_precision(message::Message&& msg) {
     eckit::Buffer buffer(N * sizeof(To));
 
     auto md = msg.metadata();
-    md.set<std::int64_t>(dm::legacy::GlobalSize, buffer.size());
-    md.set(dm::legacy::Precision, std::is_same_v<To, double> ? "double" : std::is_same_v<To, float> ? "single" : NOTIMP);
+    md.set("globalSize", buffer.size());
+    md.set("precision", std::is_same<To, double>::value  ? "double"
+                        : std::is_same<To, float>::value ? "single"
+                                                         : NOTIMP);
 
     const auto* a = reinterpret_cast<const From*>(msg.payload().data());
     auto* b = reinterpret_cast<To*>(buffer.data());

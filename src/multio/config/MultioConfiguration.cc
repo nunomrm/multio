@@ -4,8 +4,7 @@
 
 #include "multio/config/MetadataMappings.h"
 #include "multio/config/MultioConfiguration.h"
-#include "eckit/log/Log.h"
-#include "multio/LibMultio.h"
+
 #include "multio/util/Environment.h"
 #include "multio/util/Substitution.h"
 
@@ -62,14 +61,14 @@ ConfigAndPaths configureFromEnv(config::LocalPeerTag tag) {
 
     if (::getenv("MULTIO_PLANS")) {
         std::string cfg(::getenv("MULTIO_PLANS"));
-        LOG_DEBUG_LIB(LibMultio) << "MultIO initialising with plans " << cfg << std::endl;
+        std::cout << "MultIO initialising with plans " << cfg << std::endl;
         paths.configDir = "";
         return ConfigAndPaths{paths, eckit::LocalConfiguration{eckit::YAMLConfiguration(cfg)}};
     }
 
     if (::getenv("MULTIO_PLANS_FILE")) {
         eckit::PathName filePath(::getenv("MULTIO_PLANS_FILE"));
-        LOG_DEBUG_LIB(LibMultio) << "MultIO initialising with plans file " << filePath << std::endl;
+        std::cout << "MultIO initialising with plans file " << filePath << std::endl;
 
         auto paths2 = defaultConfigPaths(filePath);
         return ConfigAndPaths{paths2, eckit::LocalConfiguration{eckit::YAMLConfiguration{paths2.configDir}}};
@@ -78,14 +77,14 @@ ConfigAndPaths configureFromEnv(config::LocalPeerTag tag) {
     // IFS Legacy
     if (::getenv("MULTIO_CONFIG")) {
         std::string cfg(::getenv("MULTIO_CONFIG"));
-        LOG_DEBUG_LIB(LibMultio) << "MultIO initialising with config " << cfg << std::endl;
+        std::cout << "MultIO initialising with config " << cfg << std::endl;
         paths.configDir = "";
         return ConfigAndPaths{paths, configureFromSinks(eckit::LocalConfiguration{eckit::YAMLConfiguration(cfg)})};
     }
 
     if (::getenv("MULTIO_CONFIG_FILE")) {
         eckit::PathName filePath(::getenv("MULTIO_CONFIG_FILE"));
-        LOG_DEBUG_LIB(LibMultio) << "MultIO initialising with config file " << filePath << std::endl;
+        std::cout << "MultIO initialising with config file " << filePath << std::endl;
 
         auto paths2 = defaultConfigPaths(filePath);
         return ConfigAndPaths{
@@ -111,7 +110,7 @@ ConfigAndPaths configureFromEnv(config::LocalPeerTag tag) {
     }
     oss << "] }";
 
-    LOG_DEBUG_LIB(multio::LibMultio) << "MultIO initialising with $MULTIO_SINKS " << oss.str() << std::endl;
+    std::cout << "MultIO initialising with $MULTIO_SINKS " << oss.str() << std::endl;
 
     std::istringstream iss(oss.str());
     paths.configDir = "";
@@ -123,9 +122,7 @@ ConfigAndPaths configureFromEnv(config::LocalPeerTag tag) {
 MultioConfiguration::MultioConfiguration(const eckit::LocalConfiguration& globalConfig,
                                          const eckit::PathName& configDir, const eckit::PathName& configFile,
                                          LocalPeerTag localPeerTag) :
-    configDir_{configDir}, configFile_{configFile}, localPeerTag_{localPeerTag} {
-        parsedConfig_ = replaceAllCurly(globalConfig);
-    }
+    parsedConfig_{globalConfig}, configDir_{configDir}, configFile_{configFile}, localPeerTag_{localPeerTag} {}
 
 MultioConfiguration::MultioConfiguration(const eckit::PathName& configDir, const eckit::PathName& configFile,
                                          LocalPeerTag localPeerTag) :
@@ -137,16 +134,14 @@ MultioConfiguration::MultioConfiguration(const eckit::PathName& configFile, Loca
                                              configuration_path_name(configFile), configFile, localPeerTag) {}
 
 MultioConfiguration::MultioConfiguration(const eckit::LocalConfiguration& globalConfig, LocalPeerTag localPeerTag) :
-    configDir_{}, configFile_{}, localPeerTag_{localPeerTag} {
-        parsedConfig_ = replaceAllCurly(globalConfig);
-    }
+    parsedConfig_{globalConfig}, configDir_{}, configFile_{}, localPeerTag_{localPeerTag} {}
 
 
 MultioConfiguration::MultioConfiguration(ConfigAndPaths c, LocalPeerTag localPeerTag) :
-    configDir_{c.paths.configDir}, configFile_{c.paths.configFile}, localPeerTag_{localPeerTag} {
-        const auto& cfg = c.parsedConfig;
-        parsedConfig_ = replaceAllCurly(cfg);
-    }
+    parsedConfig_{c.parsedConfig},
+    configDir_{c.paths.configDir},
+    configFile_{c.paths.configFile},
+    localPeerTag_{localPeerTag} {}
 
 MultioConfiguration::MultioConfiguration(LocalPeerTag localPeerTag) :
     MultioConfiguration(configureFromEnv(localPeerTag), localPeerTag) {}
@@ -199,10 +194,18 @@ const ConfigFile& MultioConfiguration::getConfigFile(const eckit::PathName& fnam
 
     referencedConfigFiles_.emplace(
         std::piecewise_construct, std::forward_as_tuple(key),
-        std::forward_as_tuple(ConfigFile{replaceAllCurly(eckit::LocalConfiguration{eckit::YAMLConfiguration{fname}}), path}));
+        std::forward_as_tuple(ConfigFile{eckit::LocalConfiguration{eckit::YAMLConfiguration{fname}}, path}));
     return referencedConfigFiles_[key];
 }
 
+// TODO:
+// Currently we replace {~} with the configured through MULTIO_SERVER_CONFIG_PATH (which might be the basepath of
+// MULTIO_SERVER_CONFIG_FILE). All other names are looked up in the environment directly.
+//
+// Usually we would use eckit::Resource, however we have not adopted the usage of a multio home (i.e. /etc/multio) yet
+// and probably don't want to - alot of other users probably don't want to adopt this approach. Moreover to allow
+// looking environment variables or cli arguments, for eckit::Resource would enforce us to construct a string like
+// "var;$var;-var" which will be reparsed again instead of passing 3 arguments directly...
 std::string MultioConfiguration::replaceCurly(const std::string& s) const {
     return util::replaceCurly(s, [this](std::string_view replace) {
         if (replace == "~") {
@@ -219,51 +222,13 @@ std::string MultioConfiguration::replaceCurly(const std::string& s) const {
     });
 }
 
-void MultioConfiguration::replaceAllCurly(eckit::LocalConfiguration& cfg) const {
-    for (auto& key : cfg.keys()) {
-        if (cfg.isString(key)) {
-            cfg.set(key, replaceCurly(cfg.getString(key)));
-        }
-        if (cfg.isStringList(key)) {
-            std::vector<std::string> tmp;
-            for (const auto& str : cfg.getStringVector(key)) {
-                tmp.push_back(replaceCurly(str));
-            }
-            cfg.set(key, tmp);
-        }
-        if (cfg.isSubConfiguration(key)) {
-            const auto& sub = cfg.getSubConfiguration(key);
-            cfg.set(key, replaceAllCurly(sub));
-        }
-        if (cfg.isSubConfigurationList(key)) {
-            std::vector<eckit::LocalConfiguration> tmp;
-            for (const auto& sub : cfg.getSubConfigurations(key)) {
-                tmp.push_back(replaceAllCurly(sub));
-            }
-            cfg.set(key, tmp);
-        }
-    }
-}
-
-eckit::LocalConfiguration MultioConfiguration::replaceAllCurly(const eckit::LocalConfiguration& cfg) const {
-    eckit::LocalConfiguration tmp = cfg;
-    replaceAllCurly(tmp);
-    return tmp;
-}
-
 const std::vector<message::MetadataMapping>& MultioConfiguration::getMetadataMappings(
     const std::string& mappings) const {
     return metadataMappings_.getMappings(*this, mappings);
 };
 
 
-//-----------------------------------------------------------------------------
-
-std::queue<message::Message>& MultioConfiguration::debugSink() const {
-    return debugSink_;
-};
-
-//-----------------------------------------------------------------------------
+//=============================================================================
 
 MultioConfigurationHolder::MultioConfigurationHolder(MultioConfiguration&& multioConf) :
     multioConf_(std::move(multioConf)) {}
@@ -278,6 +243,6 @@ MultioConfiguration& MultioConfigurationHolder::multioConfig() noexcept {
 };
 
 
-//-----------------------------------------------------------------------------
+//=============================================================================
 
 }  // namespace multio::config

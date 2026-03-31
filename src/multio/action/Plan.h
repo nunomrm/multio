@@ -19,16 +19,16 @@
 #include <memory>
 #include <optional>
 
+#include "eckit/log/Statistics.h"
 #include "eckit/memory/NonCopyable.h"
 
 #include "multio/config/ComponentConfiguration.h"
-#include "multio/config/MultioConfiguration.h"
 #include "multio/message/Message.h"
 #include "multio/util/FailureHandling.h"
-#include "multio/util/Timing.h"
 
-namespace multio::message::match {
-class MatchReduce;
+
+namespace multio::message {
+class MetadataSelectors;
 }
 
 namespace multio::action {
@@ -56,31 +56,28 @@ struct PlanFailureTraits {
 
 
 class Plan : private eckit::NonCopyable, public FailureAware<PlanFailureTraits> {
+private:
+    // Delegate constructor with loaded config (from file or list entry)
+    Plan(std::tuple<ComponentConfiguration, std::string>&& confAndName);
+
 public:
     Plan(const ComponentConfiguration& compConf);
-    ~Plan();
+    virtual ~Plan();
 
-    void process(message::Message msg);
+    virtual void process(message::Message msg);
 
-    void matchedFields(message::match::MatchReduce& selectors) const;
+    void matchedFields(message::MetadataSelectors& selectors) const;
 
     util::FailureHandlerResponse handleFailure(util::OnPlanError, const util::FailureContext&,
                                                util::DefaultFailureState&) const override;
 
-    static std::vector<std::unique_ptr<action::Plan>> makePlans(
-        const std::vector<eckit::LocalConfiguration>& componentConfig, const config::MultioConfiguration& multioConf);
-
-    static std::vector<std::unique_ptr<action::Plan>> makePlans(
-        const std::vector<eckit::LocalConfiguration>& componentConfig, const config::MultioConfiguration& multioConf,
-        message::match::MatchReduce& selectors);
-
     const std::string& name() const noexcept;
 
 protected:
-    const std::string name_;
-    const std::unique_ptr<Action> root_;
-    util::Timing<> timing_;
+    bool enabled_;
+    std::string name_;
+    std::unique_ptr<Action> root_;
+    eckit::Timing timing_;
 };
-
 
 }  // namespace multio::action

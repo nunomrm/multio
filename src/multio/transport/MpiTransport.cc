@@ -21,6 +21,8 @@
 
 #include "multio/transport/MpiCommSetup.h"
 #include "multio/util/Environment.h"
+#include "multio/util/ScopedTimer.h"
+#include "multio/util/logfile_name.h"
 
 namespace multio::transport {
 
@@ -54,6 +56,7 @@ Message decodeMessage(eckit::Stream& stream) {
 }
 
 const size_t defaultBufferSize = 64 * 1024 * 1024;
+const size_t defaultPoolSize = 128;
 
 MpiPeerSetup setupMPI_(const ComponentConfiguration& compConf) {
     const std::string& groupName = compConf.parsedConfig().getString("group", "multio");
@@ -135,6 +138,82 @@ MpiPeerSetup setupMPI_(const ComponentConfiguration& compConf) {
     return MpiPeerSetup(MpiPeer{groupName, groupComm.rank()}, parentGroup, clientGroup, serverGroup);
 }
 
+size_t getMpiPoolSize(const ComponentConfiguration& compConf) {
+
+    switch (compConf.multioConfig().localPeerTag()) {
+        case config::LocalPeerTag::Server: {
+            auto pServ = util::getEnv("MULTIO_SERVER_MPI_POOL_SIZE");
+            if (pServ) {
+                return eckit::translate<size_t>(std::string{*pServ});
+            };
+            auto pMul = util::getEnv("MULTIO_MPI_POOL_SIZE");
+            if (pMul) {
+                return eckit::translate<size_t>(std::string{*pMul});
+            };
+            return defaultPoolSize;
+        }
+
+        case config::LocalPeerTag::Client: {
+            auto pClient = util::getEnv("MULTIO_CLIENT_MPI_POOL_SIZE");
+            if (pClient) {
+                return eckit::translate<size_t>(std::string{*pClient});
+            };
+            auto pMul = util::getEnv("MULTIO_MPI_POOL_SIZE");
+            if (pMul) {
+                return eckit::translate<size_t>(std::string{*pMul});
+            };
+            return defaultPoolSize;
+        }
+
+        default:
+            std::ostringstream oss;
+            oss << "getMpiPoolSize: localPeerTag is neither Server ("
+                << static_cast<unsigned>(config::LocalPeerTag::Server) << ") nor Client ("
+                << static_cast<unsigned>(config::LocalPeerTag::Client)
+                << "). Value: " << static_cast<unsigned>(compConf.multioConfig().localPeerTag()) << std::endl;
+            throw TransportException("", Here());
+    }
+}
+
+size_t getMpiBufferSize(const ComponentConfiguration& compConf) {
+
+    switch (compConf.multioConfig().localPeerTag()) {
+
+        case config::LocalPeerTag::Server: {
+            auto pServ = util::getEnv("MULTIO_SERVER_MPI_BUFFER_SIZE");
+            if (pServ) {
+                return eckit::translate<size_t>(std::string{*pServ});
+            };
+            auto pMul = util::getEnv("MULTIO_MPI_BUFFER_SIZE");
+            if (pMul) {
+                return eckit::translate<size_t>(std::string{*pMul});
+            };
+            return defaultBufferSize;
+        }
+
+        case config::LocalPeerTag::Client: {
+            auto pClient = util::getEnv("MULTIO_CLIENT_MPI_BUFFER_SIZE");
+            if (pClient) {
+                return eckit::translate<size_t>(std::string{*pClient});
+            };
+            auto pMul = util::getEnv("MULTIO_MPI_BUFFER_SIZE");
+            if (pMul) {
+                return eckit::translate<size_t>(std::string{*pMul});
+            };
+            return defaultBufferSize;
+        }
+
+        default:
+            std::ostringstream oss;
+            oss << "getMpiBufferSize: localPeerTag is neither Server ("
+                << static_cast<unsigned>(config::LocalPeerTag::Server) << ") nor Client ("
+                << static_cast<unsigned>(config::LocalPeerTag::Client)
+                << "). Value: " << static_cast<unsigned>(compConf.multioConfig().localPeerTag()) << std::endl;
+            throw TransportException("", Here());
+    }
+}
+
+
 }  // namespace
 
 
@@ -145,37 +224,15 @@ MpiTransport::MpiTransport(const ComponentConfiguration& compConf, MpiPeerSetup&
     clientGroup_{std::move(std::get<2>(peerSetup))},
     serverGroup_{std::move(std::get<3>(peerSetup))},
     pool_{getMpiPoolSize(compConf), getMpiBufferSize(compConf), comm(), statistics_},
-    streamQueue_{1024} {
-    // Check if the MpiPoolSize is correct:
-    //   If LocalPeerTag == Client -> MpiPoolSize >= size of server communicator
-    //   If LocalPeerTag == Server -> MpiPoolSize >= 1
-    auto poolSize = getMpiPoolSize(compConf);
-    if (compConf.multioConfig().localPeerTag() == config::LocalPeerTag::Client) {
-        if (poolSize < serverGroup_.size()) {
-            std::ostringstream os;
-            os << "Pool size of the client must be at least equal to the size of the server MPI communicator. ";
-            os << "Consider unsetting or increasing the values of the following environment variables:\n";
-            os << "    MULTIO_CLIENT_MPI_POOL_SIZE\n";
-            os << "    MULTIO_MPI_POOL_SIZE\n";
-            os << "Currently client MPI pool size is " << poolSize << " size of server communicator is " << serverGroup_.size();
-            throw eckit::UserError(os.str(), Here());
-        }
-    } else {
-        if (poolSize < 1) {
-            std::ostringstream os;
-            os << "Pool size of the server must be at least 1. ";
-            os << "Consider unsetting or increasing the values of the following environment variables:\n";
-            os << "    MULTIO_SERVER_MPI_POOL_SIZE\n";
-            os << "    MULTIO_MPI_POOL_SIZE\n";
-            os << "Currently server MPI pool size is " << poolSize;
-            throw eckit::UserError(os.str(), Here());
-        }
-    }
-}
+    streamQueue_{1024} {}
 
 MpiTransport::MpiTransport(const ComponentConfiguration& compConf) : MpiTransport(compConf, setupMPI_(compConf)) {}
 
-MpiTransport::~MpiTransport() = default;
+MpiTransport::~MpiTransport() {
+    std::ofstream logFile{util::logfile_name(), std::ios_base::app};
+    logFile << "\n ** " << *this << "\n";
+    statistics_.report(logFile);
+}
 
 void MpiTransport::openConnections() {
     for (auto& server : serverPeers()) {
@@ -188,29 +245,13 @@ void MpiTransport::closeConnections() {
     for (auto& server : serverPeers()) {
         Message msg{Message::Header{Message::Tag::Close, local_, *server}};
         bufferedSend(msg);
-        pool_.sendBuffer(msg.destination());
+        pool_.sendBuffer(msg.destination(), static_cast<int>(msg.tag()));
     }
     pool_.waitAll();
 }
 
-void MpiTransport::synchronize() {
-    // TODO: Maybe we can restructure this a bit as clearly the behaviour is different
-    //       depending on which side (client or server) is calling this method.
-
-    if (compConf_.multioConfig().localPeerTag() == config::LocalPeerTag::Client) {
-        for (auto& server : serverPeers()) {
-            Message msg{Message::Header{Message::Tag::Synchronization, local_, *server}};
-            bufferedSend(msg);
-            pool_.sendBuffer(msg.destination());
-        }
-        pool_.waitAll();
-    }
-
-    comm().barrier();
-}
-
 Message MpiTransport::receive() {
-    util::ScopedTiming timing{statistics_.totReturnTiming_};
+    util::ScopedTiming timing{statistics_.totReturnTimer_, statistics_.totReturnTiming_};
     /**
      * Read raw messages from streamQueue_ (filled by listen() in other thread)
      *
@@ -219,11 +260,11 @@ Message MpiTransport::receive() {
      * Return single messages until msgPack_ is empty and start over
      */
 
-    while(true) {
-        if (not msgPack_.empty()) {
-            util::ScopedTiming retTiming{statistics_.returnTiming_};
+    do {
+        while (not msgPack_.empty()) {
+            util::ScopedTiming retTiming{statistics_.returnTimer_, statistics_.returnTiming_};
             //! TODO For switch to MPMC queue: combine front() and pop()
-            auto msg = std::move(msgPack_.front());
+            auto msg = msgPack_.front();
             msgPack_.pop();
             return msg;
         }
@@ -233,14 +274,14 @@ Message MpiTransport::receive() {
         if (streamArgs.buffer) {
             eckit::ResizableMemoryStream strm{streamArgs.buffer->content};
             while (strm.position() < streamArgs.size) {
-                util::ScopedTiming decodeTiming{statistics_.decodeTiming_};
+                util::ScopedTiming decodeTiming{statistics_.decodeTimer_, statistics_.decodeTiming_};
                 auto msg = decodeMessage(strm);
-                msgPack_.push(std::move(msg));
+                msgPack_.push(msg);
             }
             streamArgs.buffer->status.store(BufferStatus::available, std::memory_order_release);
         }
 
-    }
+    } while (true);
 }
 
 void MpiTransport::abort(std::exception_ptr ptr) {
@@ -251,6 +292,8 @@ void MpiTransport::abort(std::exception_ptr ptr) {
 void MpiTransport::send(const Message& msg) {
     std::lock_guard<std::mutex> lock{mutex_};
 
+    auto msg_tag = static_cast<int>(msg.tag());
+
     // TODO: find available buffer instead
     // Add 4K for header/footer etc. Should be plenty
     eckit::Buffer buffer{eckit::round(msg.size(), 8) + 4096};
@@ -259,14 +302,14 @@ void MpiTransport::send(const Message& msg) {
 
     encodeMessage(stream, msg);
 
-    util::ScopedTiming timing{statistics_.sendTiming_};
+    util::ScopedTiming timing{statistics_.sendTimer_, statistics_.sendTiming_};
 
     auto sz = static_cast<size_t>(stream.bytesWritten());
     auto dest = static_cast<int>(msg.destination().id());
 
     // eckit::Log::info() << " *** MpiTransport::send from " << local_.group() << " " << local_.id
     // << std::endl;
-    comm().send<void>(buffer, sz, dest, 0);
+    eckit::mpi::comm(local_.group().c_str()).send<void>(buffer, sz, dest, msg_tag);
 
     ++statistics_.sendCount_;
     statistics_.sendSize_ += sz;
@@ -304,7 +347,7 @@ void MpiTransport::print(std::ostream& os) const {
     os << "MpiTransport(" << local_ << ")";
 }
 
-const Peer& MpiTransport::localPeer() const {
+Peer MpiTransport::localPeer() const {
     return local_;
 }
 
@@ -317,7 +360,7 @@ void MpiTransport::listen() {
     // large buffer?
     auto& buf = pool_.acquireAvailableBuffer(BufferStatus::fillingUp);
     auto sz = blockingReceive(status, buf);
-    util::ScopedTiming timing{statistics_.pushToQueueTiming_};
+    util::ScopedTiming timing{statistics_.pushToQueueTimer_, statistics_.pushToQueueTiming_};
     streamQueue_.push(ReceivedBuffer{&buf, sz});
 }
 
@@ -346,7 +389,7 @@ const eckit::mpi::Comm& MpiTransport::comm() const {
 }
 
 eckit::mpi::Status MpiTransport::probe() {
-    util::ScopedTiming timing{statistics_.probeTiming_};
+    util::ScopedTiming timing{statistics_.probeTimer_, statistics_.probeTiming_};
     auto status = comm().iProbe(comm().anySource(), comm().anyTag());
 
     return status;
@@ -356,7 +399,7 @@ size_t MpiTransport::blockingReceive(eckit::mpi::Status& status, MpiBuffer& buff
     auto sz = comm().getCount<void>(status);
     ASSERT(sz < buffer.content.size());
 
-    util::ScopedTiming timing{statistics_.receiveTiming_};
+    util::ScopedTiming timing{statistics_.receiveTimer_, statistics_.receiveTiming_};
     comm().receive<void>(buffer.content, sz, status.source(), status.tag());
 
     ++statistics_.receiveCount_;
@@ -366,82 +409,9 @@ size_t MpiTransport::blockingReceive(eckit::mpi::Status& status, MpiBuffer& buff
 }
 
 void MpiTransport::encodeMessage(eckit::Stream& strm, const Message& msg) {
-    util::ScopedTiming timing{statistics_.encodeTiming_};
+    util::ScopedTiming timing{statistics_.encodeTimer_, statistics_.encodeTiming_};
 
     msg.encode(strm);
-}
-
-size_t MpiTransport::getMpiPoolSize(const ComponentConfiguration& compConf) {
-    switch (compConf.multioConfig().localPeerTag()) {
-        case config::LocalPeerTag::Server: {
-            auto pServ = util::getEnv("MULTIO_SERVER_MPI_POOL_SIZE");
-            if (pServ) {
-                return eckit::translate<size_t>(std::string{*pServ});
-            };
-            auto pMul = util::getEnv("MULTIO_MPI_POOL_SIZE");
-            if (pMul) {
-                return eckit::translate<size_t>(std::string{*pMul});
-            };
-            // Default between 1 and 4 (inclusive)
-            return std::max<size_t>(1, std::min<size_t>(clientGroup_.size() / 2, 4));
-        }
-
-        case config::LocalPeerTag::Client: {
-            auto pClient = util::getEnv("MULTIO_CLIENT_MPI_POOL_SIZE");
-            if (pClient) {
-                return eckit::translate<size_t>(std::string{*pClient});
-            };
-            auto pMul = util::getEnv("MULTIO_MPI_POOL_SIZE");
-            if (pMul) {
-                return eckit::translate<size_t>(std::string{*pMul});
-            };
-            return 2 * serverGroup_.size();
-        }
-
-        default:
-            std::ostringstream oss;
-            oss << "getMpiPoolSize: localPeerTag is neither Server ("
-                << static_cast<unsigned>(config::LocalPeerTag::Server) << ") nor Client ("
-                << static_cast<unsigned>(config::LocalPeerTag::Client)
-                << "). Value: " << static_cast<unsigned>(compConf.multioConfig().localPeerTag()) << std::endl;
-            throw TransportException("", Here());
-    }
-}
-
-size_t MpiTransport::getMpiBufferSize(const ComponentConfiguration& compConf) {
-    switch (compConf.multioConfig().localPeerTag()) {
-        case config::LocalPeerTag::Server: {
-            auto pServ = util::getEnv("MULTIO_SERVER_MPI_BUFFER_SIZE");
-            if (pServ) {
-                return eckit::translate<size_t>(std::string{*pServ});
-            };
-            auto pMul = util::getEnv("MULTIO_MPI_BUFFER_SIZE");
-            if (pMul) {
-                return eckit::translate<size_t>(std::string{*pMul});
-            };
-            return defaultBufferSize;
-        }
-
-        case config::LocalPeerTag::Client: {
-            auto pClient = util::getEnv("MULTIO_CLIENT_MPI_BUFFER_SIZE");
-            if (pClient) {
-                return eckit::translate<size_t>(std::string{*pClient});
-            };
-            auto pMul = util::getEnv("MULTIO_MPI_BUFFER_SIZE");
-            if (pMul) {
-                return eckit::translate<size_t>(std::string{*pMul});
-            };
-            return defaultBufferSize;
-        }
-
-        default:
-            std::ostringstream oss;
-            oss << "getMpiBufferSize: localPeerTag is neither Server ("
-                << static_cast<unsigned>(config::LocalPeerTag::Server) << ") nor Client ("
-                << static_cast<unsigned>(config::LocalPeerTag::Client)
-                << "). Value: " << static_cast<unsigned>(compConf.multioConfig().localPeerTag()) << std::endl;
-            throw TransportException("", Here());
-    }
 }
 
 static TransportBuilder<MpiTransport> MpiTransportBuilder("mpi");

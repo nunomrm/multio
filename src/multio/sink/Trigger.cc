@@ -120,13 +120,11 @@ private:  // methods
 class EventTrigger {
 public:  // methods
     EventTrigger(const ComponentConfiguration& compConf) {
-        if (compConf.parsedConfig().has("file")) {
+        if (compConf.parsedConfig().has("file"))
             file_ = compConf.parsedConfig().getString("file");
-        }
 
-        if (compConf.parsedConfig().has("host")) {
+        if (compConf.parsedConfig().has("host"))
             host_ = compConf.parsedConfig().getString("host");
-        }
 
         failOnRetry_ = compConf.parsedConfig().getInt("failOnRetry", false);
 
@@ -220,9 +218,8 @@ public:  // methods
             lastSeen_ = now;
         }
 
-        if (lastSeen_ == now) {
+        if (lastSeen_ == now)
             return; /* no change => no event */
-        }
 
         updateEventsIssued();
 

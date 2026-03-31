@@ -9,15 +9,15 @@
 #include "eckit/option/CmdArgs.h"
 #include "eckit/option/SimpleOption.h"
 
-#include "multio/api/c/multio_c_cpp_utils.h"
-#include "multio/config/PathConfiguration.h"
+#include "multio/api/multio_c_cpp_utils.h"
+#include "multio/config/ConfigurationPath.h"
 #include "multio/tools/MultioTool.h"
 
 
 using multio::config::configuration_path_name;
 
 namespace {
-// TODO pgeier: Remove this helper class and update test configs to use the metadata-mapping action
+// TODO: Remove this helper class and update test configs to use the parameter-mapping action
 
 using NemoKey = std::string;
 
@@ -148,6 +148,7 @@ MultioReplayNemoCApi::MultioReplayNemoCApi(int argc, char** argv) :
             singlePrecision_ = true;
         }
     }
+    return;
 }
 
 void MultioReplayNemoCApi::init(const eckit::option::CmdArgs& args) {
@@ -204,15 +205,8 @@ void MultioReplayNemoCApi::setDomains(bool onlyLoadDefinitions) {
         = {{"T grid", "grid_T"}, {"U grid", "grid_U"}, {"V grid", "grid_V"}, {"W grid", "grid_W"}};
 
     multio_metadata_t* md = nullptr;
-    if (!onlyLoadDefinitions) {
+    if (!onlyLoadDefinitions)
         multio_new_metadata(&md, multio_handle);
-
-        // Global size is constant for all domains, send by parametrization (mainly for testing purpose...)
-        multio_metadata_set_string(md, "category", "parametrization");
-        multio_metadata_set_bool(md, "toAllServers", true);
-        multio_metadata_set_int(md, "misc-globalSize", globalSize_);
-        multio_write_parametrization(multio_handle, md);
-    }
 
     for (auto const& grid : grid_type) {
         auto buffer = readGrid(grid.second, rank_);
@@ -224,6 +218,7 @@ void MultioReplayNemoCApi::setDomains(bool onlyLoadDefinitions) {
 
             multio_metadata_set_string(md, "category", "ocean-domain-map");
             multio_metadata_set_string(md, "representation", "structured");
+            multio_metadata_set_int(md, "globalSize", globalSize_);
             multio_metadata_set_bool(md, "toAllServers", true);
 
             multio_write_domain(multio_handle, md, buffer.data(), sz);
@@ -231,9 +226,8 @@ void MultioReplayNemoCApi::setDomains(bool onlyLoadDefinitions) {
 
         domainDefinitions_.emplace(std::make_pair(grid.first, std::move(buffer)));
     }
-    if (!onlyLoadDefinitions) {
+    if (!onlyLoadDefinitions)
         multio_delete_metadata(md);
-    }
 }
 
 void MultioReplayNemoCApi::writeMasks() {
@@ -260,8 +254,7 @@ void MultioReplayNemoCApi::writeMasks() {
         multio_metadata_set_string(md, "domain", domain.c_str());
 
         multio_metadata_set_string(md, "category", "ocean-mask");
-        // Global size has been set through parametrization
-        // multio_metadata_set_int(md, "globalSize", globalSize_);
+        multio_metadata_set_int(md, "globalSize", globalSize_);
         multio_metadata_set_int(md, "level", level_);
         multio_metadata_set_bool(md, "toAllServers", true);
 
@@ -308,8 +301,7 @@ void MultioReplayNemoCApi::writeFields() {
 
         // Set reused fields once at the beginning
         multio_metadata_set_string(md, "category", "ocean-2d");
-        // globalSize has been set through parametrization
-        // multio_metadata_set_int(md, "globalSize", globalSize_);
+        multio_metadata_set_int(md, "globalSize", globalSize_);
         multio_metadata_set_int(md, "level", level_);
         multio_metadata_set_int(md, "step", step_);
 
@@ -411,8 +403,8 @@ void MultioReplayNemoCApi::initClient() {
 
     int retComm = 0;
     if (passDownMPIComm_) {
-        multio_mpi_parent_comm(multio_cc, eckit::mpi::comm(mpiGroup_.c_str()).communicator());
-        multio_mpi_return_client_comm(multio_cc, &retComm);
+        multio_conf_mpi_parent_comm(multio_cc, eckit::mpi::comm(mpiGroup_.c_str()).communicator());
+        multio_conf_mpi_return_client_comm(multio_cc, &retComm);
     }
 
 

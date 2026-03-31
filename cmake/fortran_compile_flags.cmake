@@ -19,20 +19,20 @@ if(CMAKE_Fortran_COMPILER_ID MATCHES "Cray")
 
 elseif(CMAKE_Fortran_COMPILER_ID MATCHES "GNU")
   set(autopromote_flags   "-fdefault-real-8 -fdefault-double-8")
-  #set(checkbounds_flags   "")
-  # set(checkbounds_flags   "-fcheck=bounds")
+  set(checkbounds_flags   "-fcheck=bounds")
   set(fpe_flags           "-ffpe-trap=invalid,zero,overflow")
   set(initsnan_flags      "-finit-real=snan")
+
   set(convert_flags       "-fconvert=big-endian")
   set(linelength_flags    "-ffree-line-length-none")
   set(nofma_flags         "")
 
 elseif(CMAKE_Fortran_COMPILER_ID MATCHES "Intel")
   set(autopromote_flags   "-real-size 64")
-  #set(checkbounds_flags   "-check bounds")
-  set(checkbounds_flags   "")
+  set(checkbounds_flags   "-check bounds")
   set(initsnan_flags      "-init=snan")
   set(fpe_flags           "-fpe0")
+
   #set(convert_flags       "-convert big-endian")
   set(convert_flags       "")
   set(linelength_flags    "")
@@ -41,13 +41,19 @@ elseif(CMAKE_Fortran_COMPILER_ID MATCHES "Intel")
 elseif(CMAKE_Fortran_COMPILER_ID MATCHES "PGI|NVHPC")
   set(autopromote_flags   "-r8")
   set(fpe_flags           "-Ktrap=fp")
-  # set(checkbounds_flags   "-Mbounds")
+  set(checkbounds_flags   "-Mbounds")
+
   set(convert_flags       "-byteswapio")
-  set(linelength_flags    "-Mfree -Mextend")
+  set(linelength_flags    "-M free -M extend")
   set(nofma_flags         "")
 
 elseif(CMAKE_Fortran_COMPILER_ID MATCHES "Flang")
-  set(linelength_flags    "-ffree-form")
+  set(autopromote_flags   "-fdefault-real-8")
+  set(fpe_flags           "-ffp-exception-behavior=strict")
+
+  set(convert_flags       "-fconvert=big-endian")
+  set(linelength_flags    "-ffree-line-length-none")
+  set(nofma_flags         "-fno-fma")
 endif()
 
 if( NOT HAVE_SINGLE_PRECISION )
@@ -68,6 +74,12 @@ if( CMAKE_BUILD_TYPE MATCHES "Debug" AND NOT CMAKE_Fortran_COMPILER_ID MATCHES P
   endif()
 endif()
 
+if(CMAKE_Fortran_COMPILER_ID MATCHES "GNU")
+  # if( NOT CMAKE_Fortran_COMPILER_VERSION VERSION_LESS 10 )
+  #   ecbuild_add_fortran_flags( "-fallow-argument-mismatch" NAME argument_mismatch )
+  # endif()
+  ecbuild_add_fortran_flags( "-Wall -Wpedantic" NAME warnings )
+endif()
 
 if(CMAKE_Fortran_COMPILER_ID MATCHES "Flang")
   # Linker complains of unknown arguments:

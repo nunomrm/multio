@@ -2,8 +2,6 @@ ecbuild_add_library(
 
     TARGET multio-action-interpolate
 
-    TYPE SHARED # Due to reliance on factory self registration this library cannot be static
-
     SOURCES
         Interpolate.cc
         Interpolate.h
@@ -27,16 +25,14 @@ ecbuild_add_executable(
 
     SOURCES
         FesomCacheGenerator.cc
-        HEALPix.cc
-        HEALPix.h
         ../../tools/MultioTool.cc
 
     CONDITION
-        HAVE_MIR AND HAVE_ECKIT_CODEC AND HAVE_MULTIO_BUILD_TOOLS
+        HAVE_MIR AND HAVE_ATLAS_IO
 
     LIBS
         multio
+        atlas_io
         eckit
-        eckit_codec
         mir
 )

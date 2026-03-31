@@ -52,9 +52,8 @@ public:
     }
 
     int computeBitsPerValue(double min, double max) const {
-        if (bitsPerValue) {
+        if (bitsPerValue)
             return bitsPerValue;
-        }
 
         if (decimalScaleFactor != marker()) {
             const int& p = decimalScaleFactor;

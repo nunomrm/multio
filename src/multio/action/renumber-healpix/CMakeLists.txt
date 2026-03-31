@@ -10,15 +10,17 @@ ecbuild_add_library(
 
     PRIVATE_INCLUDES
 
+    CONDITION
+
     PUBLIC_LIBS
         multio
-        eckit_codec
+        atlas_io
 )
 
 # TODO: move this to the tools folder
 ecbuild_add_executable(
     TARGET    multio-generate-healpix-cache
     SOURCES   GenerateCache.cc ${PROJECT_SOURCE_DIR}/src/multio/tools/MultioTool.cc HEALPix.cc HEALPix.h
-    CONDITION HAVE_ECKIT_CODEC AND HAVE_MULTIO_BUILD_TOOLS
-    LIBS      multio eckit eckit_codec
+    CONDITION HAVE_ATLAS_IO
+    LIBS      multio atlas_io eckit
 )

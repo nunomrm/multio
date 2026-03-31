@@ -8,56 +8,43 @@
 
 #include "TimeUtils.h"
 
-namespace multio::action::statistics {
+namespace multio::action {
 
 
-TemporalStatistics::TemporalStatistics(const std::string& output_freq, const std::vector<std::string>& operations,
-                                       const message::Message& msg, std::shared_ptr<StatisticsIO>& IOmanager,
-                                       const StatisticsConfiguration& cfg) :
-    periodUpdater_{make_period_updater(output_freq, cfg)},
-    window_{make_window(periodUpdater_, cfg)},
+TemporalStatistics::TemporalStatistics(const std::shared_ptr<PeriodUpdater>& periodUpdater,
+                                       const std::vector<std::string>& operations, const message::Message& msg,
+                                       std::shared_ptr<StatisticsIO>& IOmanager, const StatisticsConfiguration& cfg) :
+    periodUpdater_{periodUpdater},
+    window_{periodUpdater_->initPeriod(msg, IOmanager, cfg)},
     statistics_{make_operations(operations, msg, IOmanager, window_, cfg)} {}
 
-TemporalStatistics::TemporalStatistics(std::shared_ptr<StatisticsIO>& IOmanager, const StatisticsOptions& opt) :
-    periodUpdater_{load_period_updater(IOmanager, opt)},
-    window_{load_window(IOmanager, opt)},
-    statistics_{load_operations(IOmanager, window_, opt)} {
-    LOG_DEBUG_LIB(LibMultio) << opt.logPrefix() << " *** Load restart files" << std::endl;
-}
 
-
-void TemporalStatistics::dump(std::shared_ptr<StatisticsIO>& IOmanager, const StatisticsOptions& opt) const {
-    LOG_DEBUG_LIB(LibMultio) << opt.logPrefix() << " *** Dump restart files" << std::endl;
-    IOmanager->pushDir("periodUpdater");
-    IOmanager->createCurrentDir();
-    periodUpdater_->dump(IOmanager, opt);
-    IOmanager->popDir();
-    IOmanager->pushDir("operationWindow");
-    IOmanager->createCurrentDir();
-    window_.dump(IOmanager, opt);
-    IOmanager->popDir();
-    IOmanager->pushDir("operations");
-    IOmanager->createCurrentDir();
+void TemporalStatistics::dump(std::shared_ptr<StatisticsIO>& IOmanager, const StatisticsConfiguration& cfg) const {
+    LOG_DEBUG_LIB(LibMultio) << cfg.logPrefix() << " *** Dump restart files" << std::endl;
+    window_.dump(IOmanager, cfg);
     for (auto& stat : statistics_) {
-        stat->dump(IOmanager, opt);
+        stat->dump(IOmanager, cfg);
     }
-    IOmanager->popDir();
+    IOmanager->flush();
+    return;
 }
 
 void TemporalStatistics::updateData(message::Message& msg, const StatisticsConfiguration& cfg) {
     LOG_DEBUG_LIB(multio::LibMultio) << cfg.logPrefix() << " *** Update Data" << std::endl;
     window_.updateData(currentDateTime(msg, cfg));
     for (auto& stat : statistics_) {
-        stat->updateData(msg.payload().data(), msg.size(), cfg);
+        stat->updateData(msg.payload().data(), msg.size());
     }
+    return;
 }
 
 void TemporalStatistics::updateWindow(const message::Message& msg, const StatisticsConfiguration& cfg) {
-    LOG_DEBUG_LIB(multio::LibMultio) << cfg.logPrefix() << " *** Update Window " << std::endl;
+    LOG_DEBUG_LIB(::multio::LibMultio) << cfg.logPrefix() << " *** Update Window " << std::endl;
     window_.updateWindow(window_.endPoint(), periodUpdater_->updateWinEndTime(window_.endPoint()));
     for (auto& stat : statistics_) {
         stat->updateWindow(msg.payload().data(), msg.size(), msg, cfg);
     }
+    return;
 }
 
 bool TemporalStatistics::isEndOfWindow(message::Message& msg, const StatisticsConfiguration& cfg) {
@@ -77,4 +64,4 @@ void TemporalStatistics::print(std::ostream& os) const {
     os << "Temporal Statistics";
 }
 
-}  // namespace multio::action::statistics
+}  // namespace multio::action

@@ -14,82 +14,56 @@
 
 #pragma once
 
-#include "metkit/codes/api/CodesTypes.h"
-#include "multio/datamod/Glossary.h"
+#include <memory>
+
+#include "MioGribHandle.h"
+#include "eccodes.h"
+#include "metkit/codes/GribHandle.h"
+
 #include "multio/message/Message.h"
 
-
-#include "eckit/config/LocalConfiguration.h"
-
-#include "metkit/codes/api/CodesAPI.h"
-
-#include "eccodes.h"
-
-
-#include <memory>
 #include <variant>
 
 
-namespace multio::action::encode {
-
-namespace dm = multio::datamod;
+namespace multio::action {
 
 using CodesScalarValue = std::variant<std::int64_t, double, std::string>;
 using CodesOverwrites = std::vector<std::pair<std::string, CodesScalarValue>>;
 
 class GribEncoder {
 public:
-    GribEncoder(std::unique_ptr<metkit::codes::CodesHandle> handle, const eckit::LocalConfiguration& config);
+    GribEncoder(codes_handle* handle, const eckit::LocalConfiguration& config);
 
     template <typename T>
     void setValue(const std::string& key, std::optional<T> v) {
         if (v) {
-            encoder_->set(key, *v);
+            encoder_->setValue(key, *v);
         }
     };
 
     template <typename T>
     void setValue(const std::string& key, T v) {
         if constexpr (std::is_signed_v<T> && std::is_integral_v<T>) {
-            encoder_->set(key, static_cast<std::int64_t>(v));
+            encoder_->setValue(key, static_cast<long>(v));
         }
         else {
-            encoder_->set(key, v);
+            encoder_->setValue(key, v);
         }
     };
 
     void setMissing(const std::string& key);
 
     template <typename T>
-    void setValue(const std::string& key, const std::vector<T>& v) {
-        encoder_->set(key, v);
+    void setDataValues(const T* data, size_t count) {
+        encoder_->setDataValues(data, count);
     };
-
-    // Dirty implementation - before metkit::codes::CodesHandle
-    // was used, the former implementation explicitly ignored key setting errors
-    // when the key was read-only.
-    // As this encoder is planned to be removed, some keys with undecided read-only behaviour
-    // are set with this call.
-    template <typename T>
-    void trySetValue(const std::string& key, T&& val) {
-        try {
-            setValue(key, std::forward<std::decay_t<T>>(val));
-        }
-        catch (metkit::codes::CodesException& e) {
-            eckit::Log::info() << "Multio legacy GribEncoder::trySetValue(" << key << ",  " << val
-                               << ")  failed: " << std::endl;
-        }
-    }
-
-    template <typename T>
-    void setDataValues(const T* data, size_t count) = delete;
-
     bool hasKey(const char* key);
 
-    message::Message encodeOceanCoordinates(message::Message&& msg, const message::Metadata& additionalMetadata);
+    message::Message encodeOceanCoordinates(message::Message&& msg,
+                                            const eckit::LocalConfiguration& additionalMetadata);
 
-    message::Message encodeField(message::Message&& msg, const CodesOverwrites& overwrites,
-                                 const message::Metadata& additionalMetadata);
+    message::Message encodeField(const message::Message& msg, const CodesOverwrites& overwrites,
+                                 const eckit::LocalConfiguration& additionalMetadata);
 
     // TODO May be refactored
     // int getBitsPerValue(int paramid, const std::string& levtype, double min, double max);
@@ -98,18 +72,18 @@ public:
 
 private:
     // Encoder is now a member of the action
-    const std::unique_ptr<metkit::codes::CodesHandle> template_;
-    std::unique_ptr<metkit::codes::CodesHandle> encoder_;
+    const MioGribHandle template_;
+    std::unique_ptr<MioGribHandle> encoder_;
 
     void initEncoder();
 
-    void setFieldMetadata(message::Metadata& md);
-    void setOceanMetadata(message::Metadata& md);
+    void setFieldMetadata(const message::Message& msg, const eckit::LocalConfiguration& additionalMetadata);
+    void setOceanMetadata(const message::Message& msg, const eckit::LocalConfiguration& additionalMetadata);
 
-    void setOceanCoordMetadata(message::Metadata& md);
+    void setOceanCoordMetadata(const message::Metadata& metadata, const eckit::Configuration& additionalMetadata);
 
     template <typename T>
-    message::Message setFieldValues(message::Message&& msg);
+    message::Message setFieldValues(const message::Message& msg);
 
 
     const eckit::LocalConfiguration config_;
@@ -122,13 +96,10 @@ private:
 };
 
 inline bool isOcean(const message::Metadata& metadata) {
-
     // Check if metadata has a key "nemoParam" or a category starting with "ocean"
-    std::optional<std::string> category = metadata.getOpt<std::string>(dm::legacy::Category);
-    const bool hasNemoParam = metadata.find(dm::legacy::NemoParam) != metadata.end();
-    const bool hasCatOcean = category && (category->rfind("ocean") == 0);
-    return hasNemoParam || hasCatOcean;
+    return metadata.has("nemoParam")
+        || (metadata.has("category") && (metadata.getString("category").rfind("ocean") == 0));
 };
 
 
-}  // namespace multio::action::encode
+}  // namespace multio::action

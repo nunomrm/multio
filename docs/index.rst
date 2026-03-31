@@ -12,12 +12,10 @@ distributed meteorological and earth-system models.
 
    content/introduction
    content/installation
-   content/design
    content/api
    content/reference
    content/processing-pipelines
    content/mpi-communicators
    content/usage-examples
-   content/datamod
    content/licence
    genindex

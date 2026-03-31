@@ -12,7 +12,7 @@
 #include "multio/LibMultio.h"
 #include "multio/action/Plan.h"
 #include "multio/config/ComponentConfiguration.h"
-#include "multio/config/PathConfiguration.h"
+#include "multio/config/ConfigurationPath.h"
 #include "multio/message/Message.h"
 #include "multio/tools/MultioTool.h"
 
@@ -135,6 +135,7 @@ void MultioEncodeOcean::setCommonMetadata() {
     codes_check_set_string(handle(), "class", "rd");
     codes_check_set_string(handle(), "stream", "oper");
     codes_check_set_string(handle(), "type", "fc");
+    CODES_CHECK(codes_set_long(handle(), "levtype", 168), nullptr);
     CODES_CHECK(codes_set_long(handle(), "step", step_), nullptr);
     CODES_CHECK(codes_set_long(handle(), "level", level_), nullptr);
 }
@@ -192,9 +193,12 @@ void MultioEncodeOcean::executePlan() {
     CODES_CHECK(codes_get_message(handle(), reinterpret_cast<const void**>(&buf), &sz), nullptr);
 
     auto multioConfig = test_configuration();
-    std::vector<std::unique_ptr<Plan>> plans
-        = multio::action::Plan::makePlans(multioConfig.parsedConfig().getSubConfigurations("plans"), multioConfig);
-    Message msg{Message::Header{Message::Tag::Field, Peer{"", 0}, Peer{"", 0}}, eckit::Buffer{buf, sz}};
+    std::vector<std::unique_ptr<Plan>> plans;
+    for (auto&& cfg : multioConfig.parsedConfig().getSubConfigurations("plans")) {
+        plans.emplace_back(std::make_unique<Plan>(ComponentConfiguration(std::move(cfg), multioConfig)));
+    }
+
+    Message msg{Message::Header{Message::Tag::Grib, Peer{"", 0}, Peer{"", 0}}, eckit::Buffer{buf, sz}};
     eckit::Log::debug<multio::LibMultio>() << "Message size: " << msg.size() << std::endl;
 
     for (const auto& plan : plans) {

@@ -10,7 +10,7 @@
 
 cmake_minimum_required( VERSION 3.12 FATAL_ERROR )
 
-find_package( ecbuild 3.9.1 REQUIRED HINTS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../ecbuild)
+find_package( ecbuild 3.6 REQUIRED HINTS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../ecbuild)
 
 project( multio LANGUAGES CXX )
 
@@ -19,14 +19,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ### dependencies
 
-ecbuild_find_package( NAME eccodes     VERSION  2.31.2   REQUIRED )
-ecbuild_find_package( NAME eckit       VERSION  1.25     REQUIRED )
-ecbuild_find_package( NAME metkit      VERSION  1.10     REQUIRED )
-ecbuild_find_package( NAME atlas       VERSION  0.35     REQUIRED )
-
+ecbuild_find_package( NAME eccodes     VERSION  2.18   REQUIRED )
+ecbuild_find_package( NAME eckit       VERSION  1.22   REQUIRED )
+ecbuild_find_package( NAME metkit      VERSION  1.7    REQUIRED )
+ecbuild_find_package( NAME atlas       VERSION  0.35   REQUIRED )
 
 if( NOT metkit_HAVE_GRIB )
   ecbuild_critical( "metkit must be built with GRIB support" )
+endif()
+
+if( NOT eckit_HAVE_MPI )
+  ecbuild_critical( "eckit must be built with MPI support" )
 endif()
 
 ### fdb5 plugin
@@ -34,26 +37,21 @@ endif()
 ecbuild_add_option( FEATURE FDB5
                     DEFAULT ON
                     DESCRIPTION "Send data to FDB5"
-                    REQUIRED_PACKAGES "NAME fdb5 VERSION 5.11.20" )
+                    REQUIRED_PACKAGES "NAME fdb5 VERSION 5.10.1" )
 
-### eckit-codec plugin
+### atlas-io plugin
 
-set( eckit_HAVE_ECKIT_CODEC 0 )
-if( TARGET eckit_codec )
-  set( eckit_HAVE_ECKIT_CODEC 1 )
-endif()
-
-ecbuild_add_option( FEATURE ECKIT_CODEC
+ecbuild_add_option( FEATURE ATLAS_IO
                     DEFAULT ON
-                    DESCRIPTION "Use eckit codec for IO"
-                    CONDITION eckit_HAVE_ECKIT_CODEC )
+                    DESCRIPTION "Use atlasIO for the restart"
+                    REQUIRED_PACKAGES "NAME atlas_io VERSION 0.33" )
 
 ### interpolate action
 
 ecbuild_add_option( FEATURE MIR
                     DEFAULT ON
                     DESCRIPTION "Interpolate data using MIR"
-                    REQUIRED_PACKAGES "NAME mir VERSION 1.17.0" )
+                    REQUIRED_PACKAGES "NAME mir VERSION 1.16.0" )
 
 ecbuild_add_option( FEATURE PGEN
                     DEFAULT OFF
@@ -70,20 +68,12 @@ ecbuild_add_option( FEATURE LEGACY_IFSIO
                     DEFAULT OFF
                     DESCRIPTION "Legacy (FDB4) IFS I/O interface" )
 
-### Enable creation of Dummy api
-
-ecbuild_add_option( FEATURE MULTIO_DUMMY_API
-                    DEFAULT OFF
-                    DESCRIPTION "Enable creation of multio Dummy API" )
 
 if( HAVE_FORTRAN )
-    ecbuild_enable_fortran( REQUIRED MODULE_DIRECTORY ${PROJECT_BINARY_DIR}/module)
-    ecbuild_find_package( NAME fckit   VERSION 0.10.0   REQUIRED )
-    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/fortran_compile_flags.cmake)
-
-    ecbuild_add_option( FEATURE MPI_FORTRAN
-                        DEFAULT ON
-                        REQUIRED_PACKAGES "NAME MPI COMPONENTS Fortran" )
+  ecbuild_enable_fortran( REQUIRED MODULE_DIRECTORY ${PROJECT_BINARY_DIR}/module)
+  ecbuild_find_package( NAME fckit   VERSION 0.10.0   REQUIRED )
+  find_package( MPI COMPONENTS Fortran) # Add explicit mpi for errorcodes -- isn't there a better way?
+  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/fortran_compile_flags.cmake)
 endif()
 
 
@@ -100,31 +90,6 @@ ecbuild_add_option( FEATURE SANDBOX
                     DEFAULT OFF
                     DESCRIPTION "Sanbox for exploring io server design" )
 
-ecbuild_add_option( FEATURE BUILD_TOOLS
-                    DEFAULT ON
-                    DESCRIPTION "Build the command line tools" )
-
-if(HAVE_BUILD_TOOLS)
-    set(_default_multio_tools ON)
-else()
-    set(_default_multio_tools OFF)
-endif()
-
-ecbuild_add_option( FEATURE MULTIO_BUILD_TOOLS
-                    DEFAULT ${_default_multio_tools}
-                    DESCRIPTION "Build the command line MULTIO tools" )
-
-if(HAVE_MULTIO_BUILD_TOOLS)
-    set(_default_grib1_to_grib2 ON)
-else()
-    set(_default_grib1_to_grib2 OFF)
-endif()
-
-ecbuild_add_option( FEATURE GRIB1_TO_GRIB2
-                    DEFAULT ${_default_grib1_to_grib2}
-                    DESCRIPTION "Build the command line GRIB1-to-GRIB2 converter tool" )
-
-
 ### HEALPix tests
 
 ecbuild_add_option( FEATURE HEALPIX_EXAMPLES
@@ -133,47 +98,25 @@ ecbuild_add_option( FEATURE HEALPIX_EXAMPLES
 
 
 ###  Definitions used by the output manager
-ecbuild_add_option( FEATURE MULTIO_OUTPUT_MANAGER
+ecbuild_add_option( FEATURE OUTPUT_MANAGER
 	            DEFAULT ON
                     DESCRIPTION "Build the output manager" )
 
 ecbuild_add_option( FEATURE OUTPUT_MANAGER_ENCODER_REPORT
-                    CONDITION HAVE_MULTIO_OUTPUT_MANAGER
+                    CONDITION HAVE_OUTPUT_MANAGER
                     DEFAULT OFF
                     DESCRIPTION "Enable generation of the encoding report" )
 
 ecbuild_add_option( FEATURE OUTPUT_MANAGER_TOOL
-                    CONDITION HAVE_MULTIO_OUTPUT_MANAGER
-                    DEFAULT OFF
+                    CONDITION HAVE_OUTPUT_MANAGER
+                    DEFAULT ON
                     DESCRIPTION "Enable generation of standalone tool" )
 
-ecbuild_add_option( FEATURE MULTIO_SERVER_MEMORY_PROFILE
-                    DEFAULT OFF
-                    DESCRIPTION "Enable multio server memory profiling" )
-
-ecbuild_add_option( FEATURE MULTIO_CLIENT_MEMORY_PROFILE
-                    DEFAULT OFF
-                    DESCRIPTION "Enable multio client memory profiling" )
-
-
 ### export package info
+
 set( MULTIO_CONFIG_DIR     share/multio/config )
-set (MULTIO_MAPPINGS_DIR   share/multio/mappings )
-set( MULTIOM_CONFIG_DIR    share/multiom )
 set( MULTIO_INCLUDE_DIRS   ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_BINARY_DIR}/src )
 set( MULTIO_LIBRARIES      multio )
-
-if ( HAVE_MULTIO_OUTPUT_MANAGER )
-    if (HAVE_FORTRAN AND (NOT (CMAKE_Fortran_COMPILER_ID STREQUAL "GNU")))
-        message(STATUS "Building multiom")
-        set( BUILD_MULTIOM 1)
-    else ()
-        message(WARNING "Skipping multiom because the GNU Fortran compiler is too slow.")
-        set( BUILD_MULTIOM 0)
-    endif()
-else()
-    set( BUILD_MULTIOM 0)
-endif()
 
 get_directory_property( MULTIO_DEFINITIONS COMPILE_DEFINITIONS )
 
@@ -186,7 +129,6 @@ include_directories( ${MULTIO_INCLUDE_DIRS} )
 
 add_subdirectory( src )
 add_subdirectory( tests )
-add_subdirectory( share )
 
 ### finalize project
 

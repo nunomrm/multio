@@ -6,10 +6,10 @@ configure_file( multio_config.h.in  multio_config.h  )
 configure_file( multio_version.h.in  multio_version.h )
 
 install(FILES
-        ${CMAKE_CURRENT_BINARY_DIR}/multio_config.h
-        ${CMAKE_CURRENT_BINARY_DIR}/multio_version.h
-    DESTINATION
-        ${INSTALL_INCLUDE_DIR}/multio )
+            ${CMAKE_CURRENT_BINARY_DIR}/multio_config.h
+            ${CMAKE_CURRENT_BINARY_DIR}/multio_version.h
+        DESTINATION
+            ${INSTALL_INCLUDE_DIR}/multio )
 
 configure_file( multio_version.cc.in  multio_version.cc )
 
@@ -22,12 +22,8 @@ list( APPEND multio_library_srcs
 )
 
 list( APPEND multio_util_srcs
-    util/config/detail/Parser.cc
-    util/config/detail/Parser.h
-    util/config/Parser.h
     util/DateTime.cc
     util/DateTime.h
-    util/Hash.h
     util/Environment.cc
     util/Environment.h
     util/FailureHandling.cc
@@ -39,39 +35,12 @@ list( APPEND multio_util_srcs
     util/Substitution.cc
     util/Substitution.h
     util/BinaryUtils.h
-    util/Timing.h
-    util/PrehashedKey.h
-    util/TypeTraits.h
-    util/TypeToString.h
-    util/SampleMetadataGen.h
-    util/Print.h
 )
-
-if ( HAVE_MULTIO_SERVER_MEMORY_PROFILE OR HAVE_MULTIO_CLIENT_MEMORY_PROFILE )
-    list( APPEND multio_util_srcs
-        util/RingBuffer.h
-        util/Tracer.h
-        util/Tracer.cc
-        util/TraceEventIds.h
-        util/MemoryInformation.h
-        util/MemoryInformation.cc
-    )
-endif()
-
-if ( HAVE_MULTIO_SERVER_MEMORY_PROFILE )
-    list(APPEND multio_utils_definitions "MULTIO_SERVER_MEMORY_PROFILE_ENABLED")
-endif()
-
-if ( HAVE_MULTIO_CLIENT_MEMORY_PROFILE )
-    list(APPEND multio_utils_definitions "MULTIO_CLIENT_MEMORY_PROFILE_ENABLED")
-endif()
 
 list( APPEND multio_config_srcs
     config/ComponentConfiguration.cc
     config/ComponentConfiguration.h
-    config/PlanConfiguration.cc
-    config/PlanConfiguration.h
-    config/PathConfiguration.h
+    config/ConfigurationPath.h
     config/MultioConfiguration.cc
     config/MultioConfiguration.h
     config/MetadataMappings.cc
@@ -117,65 +86,19 @@ list( APPEND multio_domain_srcs
 )
 
 list( APPEND multio_message_srcs
-    message/BaseMetadata.h
-    message/BaseMetadata.cc
     message/Message.cc
     message/MessageHeader.cc
     message/Message.h
-    message/Metadata.h
     message/Metadata.cc
-    message/MetadataValue.h
-    message/MetadataValue.cc
-    message/MetadataTypes.h
-    message/MetadataTypes.cc
-    message/MetadataException.cc
-    message/MetadataException.h
+    message/Metadata.h
     message/MetadataMatcher.cc
     message/MetadataMatcher.h
-    message/SharedMetadata.cc
-    message/SharedMetadata.h
-    message/SharedPayload.cc
-    message/SharedPayload.h
-    message/SharedPayloadException.cc
-    message/SharedPayloadException.h
-    message/Parametrization.cc
-    message/Parametrization.h
+    message/MetadataSelector.cc
+    message/MetadataSelector.h
     message/Peer.cc
     message/Peer.h
     message/MetadataMapping.cc
     message/MetadataMapping.h
-)
-
-list( APPEND multio_datamod_srcs
-    datamod/core/DataModellingException.cc
-    datamod/core/DataModellingException.h
-    datamod/core/Entry.h
-    datamod/core/EntryDef.h
-    datamod/core/Hash.h
-    datamod/core/Print.h
-    datamod/core/Compare.h
-    datamod/core/Record.h
-    datamod/core/NestedRecord.h
-    datamod/types/TimeDuration.cc
-    datamod/types/TimeDuration.h
-    datamod/types/LevType.cc
-    datamod/types/LevType.h
-    datamod/types/Param.cc
-    datamod/types/Param.h
-    datamod/types/StatType.cc
-    datamod/types/StatType.h
-    datamod/types/TypeOfLevel.cc
-    datamod/types/TypeOfLevel.h
-    datamod/types/TypeOfStatisticalProcessing.cc
-    datamod/types/TypeOfStatisticalProcessing.h
-    datamod/types/TypeOfProcessedData.cc
-    datamod/types/TypeOfProcessedData.h
-    datamod/ContainerInterop.h
-    datamod/Mapper.cc
-    datamod/Mapper.h
-    datamod/MarsMiscGeo.h
-    datamod/GribKeys.h
-    datamod/Glossary.h
 )
 
 list( APPEND multio_server_srcs
@@ -194,6 +117,8 @@ list( APPEND multio_sink_srcs
     sink/DataSink.h
     sink/FileSink.cc
     sink/FileSink.h
+    sink/NetcdfSink.cc
+    sink/NetcdfSink.h
     sink/IOStats.cc
     sink/IOStats.h
     sink/MultIO.cc
@@ -226,7 +151,6 @@ list( APPEND multio_transport_srcs
 list( APPEND multio_srcs
     ${multio_library_srcs}
     ${multio_util_srcs}
-    ${multio_datamod_srcs}
     ${multio_config_srcs}
     ${multio_action_srcs}
     ${multio_ifsio_srcs}
@@ -262,21 +186,11 @@ ecbuild_add_library(
       ${METKIT_INCLUDE_DIRS}
       ${ECKIT_INCLUDE_DIRS}
 
-    PRIVATE_DEFINITIONS ${multio_utils_definitions}
-
     PUBLIC_LIBS
         metkit eckit eckit_mpi)
 
 add_subdirectory(fdb5)
-add_subdirectory(maestro)
 add_subdirectory(action)
-# add_subdirectory(api)
+add_subdirectory(maestro)
+add_subdirectory(api)
 add_subdirectory(tools)
-
-add_subdirectory(mars2mars)
-
-if( HAVE_FORTRAN AND ECBUILD_INSTALL_FORTRAN_MODULES )
-    install( DIRECTORY ${CMAKE_Fortran_MODULE_DIRECTORY}/${CMAKE_CFG_INTDIR}
-             DESTINATION module/${PROJECT_NAME}
-             COMPONENT modules )
-endif()

@@ -18,7 +18,6 @@ Required
 * `eckit`_
 * `eccodes`_
 * `metkit`_
-* `atlas`_
 
 .. index:: Dependencies; Optional
 
@@ -26,11 +25,7 @@ Optional
 ~~~~~~~~
 
 * MPI
-* `fdb`_ (`-DENABLE_FDB5=ON`. Default: ON)
-* `fckit`_ (if fortran is enabled `-DENABLE_FORTRAN=ON`. Default: ON)
-* `atlas-orca`_ (to enable downloading (e)ORCA grids with atlas)
-* `mir`_ (for interpolation `-DENABLE_MIR=ON`. Default: ON)
-* `pgen`_ (internal, `-DENABLE_PGEN=ON`, Default: OFF)
+* `fdb`_
 
 .. index:: Build, Install
    :name: build-install
@@ -66,9 +61,4 @@ Build & Install
 .. _`eckit`: https://github.com/ecmwf/eckit
 .. _`eccodes`: https://github.com/ecmwf/eccodes
 .. _`metkit`: https://github.com/ecmwf/metkit
-.. _`atlas`: https://github.com/ecmwf/atlas
-.. _`atlas-orca`: https://github.com/ecmwf/atlas-orca
 .. _`fdb`: https://github.com/ecmwf/fdb
-.. _`mir`: https://github.com/ecmwf/mir
-.. _`pgen`: https://github.com/ecmwf/pgen
-.. _`fckit`: https://github.com/ecmwf/fckit

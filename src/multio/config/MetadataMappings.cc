@@ -6,24 +6,13 @@
 
 namespace multio::config {
 
-
-message::MetadataMapping::KeyMapping toKeyMapping(const eckit::LocalConfiguration& map) {
-    message::MetadataMapping::KeyMapping ret;
-
-    for (const auto& key : map.keys()) {
-        ret.emplace_back(key, map.getString(key));
-    }
-
-    return ret;
-}
-
 const std::vector<message::MetadataMapping>& MetadataMappings::getMappings(const MultioConfiguration& multioConf,
                                                                            const std::string& mapping) const {
     const auto& configFile = multioConf.getConfigFile(mapping);
 
     auto search = mappings_.find(configFile.source);
     if (search != mappings_.end()) {
-        return *(search->second.get());
+        return search->second;
     }
     else {
         if (!configFile.content.has("data")) {
@@ -34,6 +23,16 @@ const std::vector<message::MetadataMapping>& MetadataMappings::getMappings(const
 
         std::vector<eckit::LocalConfiguration> sourceList = configFile.content.getSubConfigurations("data");
 
+        for (auto& s : sourceList) {
+            for (auto& key : s.keys()) {
+                // Replace the value if it is string
+                if (s.getSubConfiguration(key).get().isString()) {
+                    s.set(key, multioConf.replaceCurly(s.getString(key)));
+                }
+            }
+        }
+
+
         // Evaluate mappings block
         if (!configFile.content.has("mappings")) {
             std::ostringstream oss;
@@ -41,9 +40,8 @@ const std::vector<message::MetadataMapping>& MetadataMappings::getMappings(const
             throw message::MetadataMappingException(oss.str(), Here());
         }
         auto mappingsVector = configFile.content.getSubConfigurations("mappings");
-        std::unique_ptr<std::vector<message::MetadataMapping>> v
-            = std::make_unique<std::vector<message::MetadataMapping>>();
-        v->reserve(mappingsVector.size());
+        std::vector<message::MetadataMapping> v;
+        v.reserve(mappingsVector.size());
 
         int mcind = 1;
         for (const auto& mc : mappingsVector) {
@@ -71,18 +69,18 @@ const std::vector<message::MetadataMapping>& MetadataMappings::getMappings(const
             std::string sourceKey = matchKeys[0];
             std::string targetKey = matchBlock.getString(sourceKey);
 
-            auto mappings = toKeyMapping(mc.getSubConfiguration("map"));
-            auto optionalMappings = toKeyMapping(mc.getSubConfiguration("optional-map"));
+            auto mappings = mc.getSubConfiguration("map");
+            auto optionalMappings = mc.getSubConfiguration("optional-map");
 
             auto targetPath = mc.has("target-path") ? std::optional<std::string>{mc.getString("target-path")}
                                                     : std::optional<std::string>{};
 
-            v->emplace(v->end(), std::move(sourceKey), std::move(mappings), std::move(optionalMappings), sourceList,
-                       std::move(targetKey), std::move(targetPath));
+            v.emplace(v.end(), std::move(sourceKey), std::move(mappings), std::move(optionalMappings), sourceList,
+                      std::move(targetKey), std::move(targetPath));
             ++mcind;
         }
-
-        return *mappings_.emplace(mapping, std::move(v)).first->second.get();
+        mappings_.emplace(mapping, std::move(v));
+        return mappings_.at(mapping);
     }
 }
 

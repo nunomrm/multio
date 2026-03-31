@@ -26,12 +26,11 @@
 #include "atlas/parallel/mpi/mpi.h"
 
 #include "GridDownloader.h"
-#include "metkit/codes/api/CodesTypes.h"
 #include "multio/LibMultio.h"
-#include "multio/config/PathConfiguration.h"
-#include "multio/util/Timing.h"
+#include "multio/config/ConfigurationPath.h"
+#include "multio/util/ScopedTimer.h"
 
-namespace multio::action::encode {
+namespace multio::action {
 
 using config::configuration_path_name;
 
@@ -60,16 +59,11 @@ GridType createGrid(const std::string& atlasNamedGrid) {
     return GridType(structuredGrid);
 }
 
-void updateGaussianGrid(metkit::codes::CodesHandle& handle, const std::string& atlasNamedGrid) {
+void updateGaussianGrid(codes_handle* handle, const std::string& atlasNamedGrid) {
     const auto gaussianGrid = createGrid<atlas::GaussianGrid>(atlasNamedGrid);
 
-    std::regex reducedGaussianMatch{"^\\s*[O]\\d+\\s*$"};
-    bool isReducedGaussian = std::regex_match(atlasNamedGrid, reducedGaussianMatch);
-    std::string gridType{isReducedGaussian ? "reduced_gg" : "regular_gg"};
-    handle.set("gridType", gridType);
-
-
-    handle.set("N", gaussianGrid.N());
+    int err = codes_set_long(handle, "N", gaussianGrid.N());
+    handleCodesError("eccodes error while setting the N value: ", err, Here());
 
     auto tmp = gaussianGrid.nx();
     std::vector<long> pl(tmp.size(), 0);
@@ -77,36 +71,39 @@ void updateGaussianGrid(metkit::codes::CodesHandle& handle, const std::string& a
         pl[i] = long(tmp[i]);
     }
 
-    handle.set("pl", pl);
+    err = codes_set_long_array(handle, "pl", pl.data(), pl.size());
+    handleCodesError("eccodes error while setting the PL array: ", err, Here());
 
     std::vector<double> values(gaussianGrid.size(), 0.0);
 
     auto it = gaussianGrid.lonlat().begin();
-    handle.set("latitudeOfFirstGridPointInDegrees", (*it)[1]);
-    handle.set("longitudeOfFirstGridPointInDegrees", (*it)[0]);
+    err = codes_set_double(handle, "latitudeOfFirstGridPointInDegrees", (*it)[1]);
+    handleCodesError("eccodes error while setting the latitudeOfFirstGridPointInDegrees: ", err, Here());
+    err = codes_set_double(handle, "longitudeOfFirstGridPointInDegrees", (*it)[0]);
+    handleCodesError("eccodes error while setting the longitudeOfFirstGridPointInDegrees: ", err, Here());
     it += gaussianGrid.size() - 1;
-    handle.set("latitudeOfLastGridPointInDegrees", (*it)[1]);
+    err = codes_set_double(handle, "latitudeOfLastGridPointInDegrees", (*it)[1]);
+    handleCodesError("eccodes error while setting the latitudeOfLastGridPointInDegrees: ", err, Here());
 
-    handle.set("values", values);
+    err = codes_set_double_array(handle, "values", values.data(), values.size());
+    handleCodesError("eccodes error while setting the values array: ", err, Here());
 
     const auto equator = gaussianGrid.N();
     const auto maxLongitude = gaussianGrid.x(gaussianGrid.nx(equator) - 1, equator);
 
-    handle.set("longitudeOfLastGridPointInDegrees", maxLongitude);
+    err = codes_set_double(handle, "longitudeOfLastGridPointInDegrees", maxLongitude);
+    handleCodesError("eccodes error while setting the longitudeOfLastGridPointInDegrees value: ", err, Here());
 }
 
-void updateRegularLatLonGrid(metkit::codes::CodesHandle& handle, const std::string& atlasNamedGrid) {
+void updateRegularLatLonGrid(codes_handle* handle, const std::string& atlasNamedGrid) {
     const auto llGrid = createGrid<atlas::RegularLonLatGrid>(atlasNamedGrid);
-
-    std::string gridType{"regular_ll"};
-    size_t gridTypeSize = gridType.size();
-    handle.set("gridType", gridType);
-
-    handle.set("Ni", llGrid.nx());
-    handle.set("Nj", llGrid.ny());
+    int err = codes_set_long(handle, "Ni", llGrid.nx());
+    handleCodesError("eccodes error while setting the Ni value: ", err, Here());
+    err = codes_set_long(handle, "Nj", llGrid.ny());
+    handleCodesError("eccodes error while setting the Nj value: ", err, Here());
 }
 
-using UpdateFunctionType = std::function<void(metkit::codes::CodesHandle&, const std::string&)>;
+using UpdateFunctionType = std::function<void(codes_handle*, const std::string&)>;
 static const std::unordered_map<std::string, UpdateFunctionType> updateFunctionMap{
     {"^\\s*[FON]\\d+\\s*$", &updateGaussianGrid}, {"^\\s*L\\d+x\\d+\\s*$", &updateRegularLatLonGrid}};
 
@@ -125,10 +122,20 @@ std::unique_ptr<GribEncoder> makeEncoder(const eckit::LocalConfiguration& conf,
 
     if (format == "grib") {
         ASSERT(conf.has("template"));
-        auto sample = metkit::codes::codesHandleFromFile(conf.getString("template"), metkit::codes::Product::GRIB);
+        std::string tmplPath = conf.getString("template");
+        // TODO provide utility to distinguish between relative and absolute paths
+        eckit::AutoStdFile fin{multioConfig.replaceCurly(tmplPath)};
+        int err;
+        auto sample = codes_handle_new_from_file(nullptr, fin, PRODUCT_GRIB, &err);
+        handleCodesError("eccodes error while reading the grib template: ", err, Here());
 
         if (conf.has("atlas-named-grid")) {
-            const auto atlasNamedGrid = conf.getString("atlas-named-grid");
+            const auto atlasNamedGrid
+                = util::replaceCurly(conf.getString("atlas-named-grid"), [](std::string_view replace) {
+                      std::string lookUpKey{replace};
+                      char* env = ::getenv(lookUpKey.c_str());
+                      return env ? std::optional<std::string>{env} : std::optional<std::string>{};
+                  });
 
             eckit::Log::info() << "REQUESTED ATLAS GRID DEFINITION UPDATE: " << atlasNamedGrid << std::endl;
 
@@ -139,11 +146,11 @@ std::unique_ptr<GribEncoder> makeEncoder(const eckit::LocalConfiguration& conf,
                                                      });
 
             if (updateFunction != updateFunctionMap.cend()) {
-                updateFunction->second(*sample.get(), atlasNamedGrid);
+                updateFunction->second(sample, atlasNamedGrid);
             }
         }
 
-        return std::make_unique<GribEncoder>(std::move(sample), conf);
+        return std::make_unique<GribEncoder>(sample, conf);
     }
     else if (format == "raw") {
         return nullptr;  // leave message in raw binary format
@@ -154,7 +161,7 @@ std::unique_ptr<GribEncoder> makeEncoder(const eckit::LocalConfiguration& conf,
 }
 
 std::string encodingExceptionReason(const std::string& r) {
-    std::string s("Encoding exception: ");
+    std::string s("Enocding exception: ");
     s.append(r);
     return s;
 }
@@ -169,17 +176,19 @@ using message::Peer;
 
 void makeOverwritesForMap(CodesOverwrites& res, const eckit::LocalConfiguration& conf) {
     for (const std::string& k : conf.keys()) {
-        if (conf.isBoolean(k)) {
-            res.emplace_back(k, (std::int64_t)conf.getBool(k));
+        auto val = conf.getSubConfiguration(k).get();
+
+        if (val.isBool()) {
+            res.emplace_back(k, (std::int64_t)val);
         }
-        else if (conf.isIntegral(k)) {
-            res.emplace_back(k, conf.getLong(k));
+        else if (val.isNumber()) {
+            res.emplace_back(k, (std::int64_t)val);
         }
-        else if (conf.isFloatingPoint(k)) {
-            res.emplace_back(k, conf.getDouble(k));
+        else if (val.isDouble()) {
+            res.emplace_back(k, (double)val);
         }
-        else if (conf.isString(k)) {
-            res.emplace_back(k, conf.getString(k));
+        else if (val.isString()) {
+            res.emplace_back(k, (std::string)val);
         }
         else {
             NOTIMP;
@@ -189,14 +198,12 @@ void makeOverwritesForMap(CodesOverwrites& res, const eckit::LocalConfiguration&
 
 CodesOverwrites makeOverwrites(const eckit::LocalConfiguration& encConf) {
     CodesOverwrites res{};
-    if (encConf.has("overwrite")) {
-        if (encConf.isSubConfiguration("overwrite")) {
-            makeOverwritesForMap(res, encConf.getSubConfiguration("overwrite"));
-        }
-        else if (encConf.isSubConfigurationList("overwrite")) {
-            for (const auto& subConf : encConf.getSubConfigurations("overwrite")) {
-                makeOverwritesForMap(res, subConf);
-            }
+    if (encConf.get().isMap()) {
+        makeOverwritesForMap(res, encConf);
+    }
+    else if (encConf.get().isList()) {
+        for (const auto& subConf : encConf.getSubConfigurations()) {
+            makeOverwritesForMap(res, subConf);
         }
     }
     return res;
@@ -205,14 +212,15 @@ CodesOverwrites makeOverwrites(const eckit::LocalConfiguration& encConf) {
 Encode::Encode(const ComponentConfiguration& compConf, const eckit::LocalConfiguration& encConf) :
     ChainedAction{compConf},
     format_{encConf.getString("format")},
-    overwrite_{makeOverwrites(encConf)},
-    additionalMetadata_{
-        message::toMetadata(encConf.has("additional-metadata")
-                                ? eckit::LocalConfiguration{encConf.getSubConfiguration("additional-metadata")}
-                                : (encConf.has("run") ? eckit::LocalConfiguration{encConf.getSubConfiguration("run")}
-                                                      : eckit::LocalConfiguration{}))},
+    overwrite_{makeOverwrites(encConf.has("overwrite")
+                                  ? eckit::LocalConfiguration{encConf.getSubConfiguration("overwrite")}
+                                  : eckit::LocalConfiguration{})},
+    additionalMetadata_{encConf.has("additional-metadata")
+                            ? eckit::LocalConfiguration{encConf.getSubConfiguration("additional-metadata")}
+                            : (encConf.has("run") ? eckit::LocalConfiguration{encConf.getSubConfiguration("run")}
+                                                  : eckit::LocalConfiguration{})},
     encoder_{makeEncoder(encConf, compConf.multioConfig())},
-    gridDownloader_{std::make_unique<GridDownloader>(compConf)} {}
+    gridDownloader_{std::make_unique<multio::action::GridDownloader>(compConf)} {}
 
 Encode::Encode(const ComponentConfiguration& compConf) : Encode(compConf, getEncodingConfiguration(compConf)) {}
 
@@ -228,10 +236,7 @@ void Encode::executeImpl(Message msg) {
 
     auto gridUID = std::optional<GridDownloader::GridUIDType>{};
 
-    auto& md = msg.metadata();
-    auto searchDomain = md.find("domain");
-    auto searchUUIDOfHGrid = md.find("uuidOfHGrid");
-    if (searchDomain != md.end() && searchUUIDOfHGrid == md.end() && isOcean(md)) {
+    if (msg.metadata().has("domain") && !msg.metadata().has("uuidOfHGrid") && isOcean(msg.metadata())) {
         //! TODO shoud not be checked here anymore, encoder_ should have been initialized according to format_
         ASSERT(format_ == "grib");
 
@@ -239,10 +244,11 @@ void Encode::executeImpl(Message msg) {
 
         const auto& md = msg.metadata();
 
-        if (auto searchGridType = md.find("gridType");
-            searchGridType != md.end() && (searchGridType->second.get<std::string>() != "HEALPix")) {
-            auto gridCoords = gridDownloader_->getGridCoords(msg.domain(), md.get<std::int64_t>("startDate"),
-                                                             md.get<std::int64_t>("startTime"));
+        std::string gridType;
+        const auto hasGridType = md.get("gridType", gridType);
+        if (hasGridType && (gridType == "unstructured_grid")) {
+            auto gridCoords
+                = gridDownloader_->getGridCoords(msg.domain(), md.getInt32("startDate"), md.getInt32("startTime"));
             if (gridCoords) {
                 executeNext(gridCoords.value().Lat);
                 executeNext(gridCoords.value().Lon);
@@ -258,30 +264,28 @@ void Encode::executeImpl(Message msg) {
 void Encode::print(std::ostream& os) const {
     os << "Encode(format=" << format_ << ", "
        << "encoder=";
-    if (encoder_) {
+    if (encoder_)
         encoder_->print(os);
-    }
     os << ")";
 }
 
-message::Message Encode::encodeField(const message::Message& message, const std::optional<std::string>& gridUID) const {
-    auto logMsg = message.logMessage();
+
+message::Message Encode::encodeField(const message::Message& msg, const std::optional<std::string>& gridUID) const {
     try {
-        util::ScopedTiming timing{statistics_.actionTiming_};
-        message::Message msg{message};
-        msg.header().acquireMetadata();
+        util::ScopedTiming timing{statistics_.localTimer_, statistics_.actionTiming_};
+        auto md = msg.metadata();
         if (gridUID) {
-            msg.modifyMetadata().set("uuidOfHGrid", gridUID.value());
+            md.set("uuidOfHGrid", gridUID.value());
         }
-        return encoder_->encodeField(std::move(msg), overwrite_, additionalMetadata_);
+        return encoder_->encodeField(msg.modifyMetadata(std::move(md)), this->overwrite_, this->additionalMetadata_);
     }
     catch (const std::exception& ex) {
         std::ostringstream oss;
-        oss << "Encode::encodeField " << ex.what() << " with Message: " << logMsg;
+        oss << "Encode::encodeField " << ex.what() << " with Message: " << msg;
         std::throw_with_nested(EncodingException(oss.str(), Here()));
     }
 }
 
 static ActionBuilder<Encode> EncodeBuilder("encode");
 
-}  // namespace multio::action::encode
+}  // namespace multio::action

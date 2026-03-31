@@ -21,7 +21,7 @@
 namespace multio {
 namespace util {
 
-//------------------------------------------------------------------------------
+//==============================================================================
 
 // Next power of two
 // End condition
@@ -46,7 +46,7 @@ constexpr inline IntType nextPowOf2(IntType v) noexcept {
 };
 
 
-//------------------------------------------------------------------------------
+//==============================================================================
 
 // prev power of two
 // Start condition
@@ -59,7 +59,7 @@ constexpr inline IntType prevPowOf2(IntType v) noexcept {
 };
 
 
-//------------------------------------------------------------------------------
+//==============================================================================
 
 // Compute bit width by using nextPowOf2
 // End condition
@@ -90,9 +90,8 @@ constexpr inline IntType bitWidth(IntType v) noexcept {
                   "bitWidth is only valid for unsigned integral types");
     // Sort out edge case when highest bit is set
     IntType highestNP2 = 1UL << (sizeof(IntType) * CHAR_BIT - 1);
-    if (v == highestNP2) {
+    if (v == highestNP2)
         return (sizeof(IntType) * CHAR_BIT - 1);
-    }
     if (v > highestNP2) {
         return sizeof(IntType) * CHAR_BIT;
     }
@@ -102,7 +101,7 @@ constexpr inline IntType bitWidth(IntType v) noexcept {
 };
 
 
-//------------------------------------------------------------------------------
+//==============================================================================
 
 }  // namespace util
 }  // namespace multio

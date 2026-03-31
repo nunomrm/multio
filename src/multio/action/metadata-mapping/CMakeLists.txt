@@ -1,8 +1,6 @@
 ecbuild_add_library(
 
-    TARGET multio-action-metadata-mapping
-
-    TYPE SHARED # Due to reliance on factory self registration this library cannot be static
+	TARGET multio-action-metadata-mapping
 
     SOURCES
     	MetadataMapping.cc

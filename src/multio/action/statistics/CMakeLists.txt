@@ -1,21 +1,15 @@
 
 list( APPEND _statistics_sources
-    cfg/StatisticsConfiguration.cc
-    cfg/StatisticsConfiguration.h
-    cfg/StatisticsOptions.cc
-    cfg/StatisticsOptions.h
-    period-updaters/PeriodUpdater.h
-    period-updaters/HourPeriodUpdater.h
-    period-updaters/DayPeriodUpdater.h
-    period-updaters/MonthPeriodUpdater.h
+    StatisticsConfiguration.cc
+    StatisticsConfiguration.h
     StatisticsIO.cc
     StatisticsIO.h
     io/FstreamIO.cc
     io/FstreamIO.h
     TimeUtils.cc
     TimeUtils.h
-    PeriodUpdaters.cc
-    PeriodUpdaters.h
+    PeriodUpdater.cc
+    PeriodUpdater.h
     OperationWindow.cc
     OperationWindow.h
     Operations.cc
@@ -25,43 +19,33 @@ list( APPEND _statistics_sources
     operations/OperationWithDeaccumulatedData.h
     operations/Accumulate.h
     operations/Average.h
-    operations/Difference.h
-    operations/InverseDifference.h
     operations/FluxAverage.h
     operations/Instant.h
     operations/Minimum.h
     operations/Maximum.h
     operations/DeAccumulate.h
     operations/FixedWindowFluxAverage.h
-    RemapParamID.cc
-    RemapParamID.h
     TemporalStatistics.cc
     TemporalStatistics.h
     Statistics.cc
     Statistics.h
-    # SynopticCollection.cc
-    # SynopticCollection.h
-    # SynopticFilters.cc
-    # SynopticFilters.h
-    # synoptic-filters/AllTimesFilter.h
-    # synoptic-filters/DailyCustomFilter.h
-    # synoptic-filters/DailyHoursFilter.h
-    # synoptic-filters/Filter.h
 )
 
 list( APPEND _statistics_libs
     multio
 )
 
-if(HAVE_ECKIT_CODEC)
+if(HAVE_ATLAS_IO)
+
+ecbuild_find_package( NAME atlas_io    VERSION  0.33   REQUIRED )
 
 list( APPEND _statistics_sources
-    io/EckitCodecIO.cc
-    io/EckitCodecIO.h
+    io/AtlasIO.cc
+    io/AtlasIO.h
 )
 
 list( APPEND _statistics_libs
-    eckit_codec
+    atlas_io
 )
 
 endif()

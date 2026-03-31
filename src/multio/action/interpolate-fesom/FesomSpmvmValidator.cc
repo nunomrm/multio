@@ -24,7 +24,7 @@
 #include "FesomInterpolationWeights.h"
 #include "InterpolateFesom.h"
 
-namespace multio::action::interpolate_fesom {
+namespace multio::action::interpolateFESOM {
 
 
 namespace {
@@ -174,6 +174,8 @@ FesomCacheValidator::FesomCacheValidator(int argc, char** argv) :
         "outputPath", "Path of the output file with the interpolated fields. Default( \".\" )"));
     options_.push_back(new eckit::option::SimpleOption<std::string>(
         "outputFile", "Name of the output file Default(\"interpolated_fields.csv\")"));
+
+    return;
 }
 
 
@@ -223,12 +225,12 @@ void FesomCacheValidator::execute(const eckit::option::CmdArgs& args) {
 };
 
 
-void FesomCacheValidator::finish(const eckit::option::CmdArgs&) {}
+void FesomCacheValidator::finish(const eckit::option::CmdArgs&) {};
 
-}  // namespace multio::action::interpolate_fesom
+}  // namespace multio::action::interpolateFESOM
 
 
 int main(int argc, char** argv) {
-    multio::action::interpolate_fesom::FesomCacheValidator tool(argc, argv);
+    multio::action::interpolateFESOM::FesomCacheValidator tool(argc, argv);
     return tool.start();
 }

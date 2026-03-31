@@ -33,9 +33,9 @@
 #include "multio/ifsio/ifsio.h"
 #include "multio/tools/MultioTool.h"
 
-#include "eckit/codec/codec.h"
+#include "atlas_io/atlas-io.h"
 
-namespace multio::action::renumber_healpix {
+namespace multio::action {
 
 namespace {
 
@@ -114,6 +114,9 @@ CacheGenerator::CacheGenerator(int argc, char** argv) :
         "by", "ordering convention used to create the triplets. Default(\"ring\")"));
     options_.push_back(new eckit::option::SimpleOption<std::string>(
         "list", "ordering convention used to create the triplets. Default(\"ring\")"));
+
+    // Exit point
+    return;
 }
 
 
@@ -139,7 +142,7 @@ void CacheGenerator::init(const eckit::option::CmdArgs& args) {
 
 void CacheGenerator::execute(const eckit::option::CmdArgs& args) {
     size_t ref = 1;
-    eckit::codec::RecordWriter record;
+    atlas::io::RecordWriter record;
     record.compression("none");
     // for ( size_t i=from_; i<=to_; ++i ){
     for (size_t i = 0; i < list_.size(); ++i) {
@@ -159,10 +162,10 @@ void CacheGenerator::execute(const eckit::option::CmdArgs& args) {
 
 void CacheGenerator::finish(const eckit::option::CmdArgs&) {}
 
-}  // namespace multio::action::renumber_healpix
+}  // namespace multio::action
 
 
 int main(int argc, char** argv) {
-    multio::action::renumber_healpix::CacheGenerator tool(argc, argv);
+    multio::action::CacheGenerator tool(argc, argv);
     return tool.start();
 }

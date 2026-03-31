@@ -5,14 +5,13 @@
 
 #include "multio/action/statistics/StatisticsIO.h"
 
-namespace multio::action::statistics {
+namespace multio::action {
 
 class FstreamIO final : public StatisticsIO {
 public:
     FstreamIO(const std::string& path, const std::string& prefix);
-    void write(const std::string& name, std::size_t fieldSize, std::size_t writeSize) override;
-    void readSize(const std::string& name, std::size_t& readSize) override;
-    void read(const std::string& name, std::size_t writeSize) override;
+    void write(const std::string& name, std::size_t writeSize) override;
+    void read(const std::string& name, std::size_t readSize) override;
     void flush() override;
 
 private:
@@ -20,4 +19,4 @@ private:
     void checkFileSize(const std::string& fname, size_t expectedSize) const;
 };
 
-}  // namespace multio::action::statistics
+}  // namespace multio::action

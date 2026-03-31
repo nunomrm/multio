@@ -8,6 +8,7 @@
 #include "eckit/mpi/Comm.h"
 #include "eckit/types/DateTime.h"
 
+#include "multio/util/ScopedTimer.h"
 
 namespace multio::transport {
 
@@ -60,12 +61,17 @@ MpiOutputStream& StreamPool::getStream(const message::Message& msg) {
         return strm;
     }
 
-    sendBuffer(dest);
+    sendBuffer(dest, static_cast<int>(msg.tag()));
 
+    return replaceStream(dest);
+}
+
+MpiOutputStream& StreamPool::replaceStream(const message::Peer& dest) {
+    streams_.erase(dest);
     return createNewStream(dest);
 }
 
-void StreamPool::sendBuffer(const message::Peer& dest) {
+void StreamPool::sendBuffer(const message::Peer& dest, int msg_tag) {
     auto& strm = streams_.at(dest);
 
     auto sz = static_cast<size_t>(strm.bytesWritten());
@@ -80,11 +86,10 @@ void StreamPool::sendBuffer(const message::Peer& dest) {
         << counter_.at(dest) << ", timestamps: " << eckit::DateTime{static_cast<double>(tstamp.tv_sec)}.time().now()
         << ":" << std::setw(6) << std::setfill('0') << mSecs;
 
-    util::ScopedTiming(statistics_.isendTiming_);
+    util::ScopedTiming(statistics_.isendTimer_, statistics_.isendTiming_);
 
-    strm.buffer().request = comm_.iSend<void>(strm.buffer().content, sz, destId, 0);
+    strm.buffer().request = comm_.iSend<void>(strm.buffer().content, sz, destId, msg_tag);
     strm.buffer().status.store(BufferStatus::transmitting, std::memory_order_release);
-    streams_.erase(dest);
 
     ::gettimeofday(&tstamp, 0);
     mSecs = tstamp.tv_usec;
@@ -96,7 +101,7 @@ void StreamPool::sendBuffer(const message::Peer& dest) {
 }
 
 MpiBuffer& StreamPool::acquireAvailableBuffer(BufferStatus newStatus, std::ostream& os) {
-    util::ScopedTiming(statistics_.waitTiming_);
+    util::ScopedTiming(statistics_.waitTimer_, statistics_.waitTiming_);
 
     auto it = std::end(buffers_);
 
@@ -158,7 +163,7 @@ MpiBuffer& StreamPool::acquireAvailableBuffer(BufferStatus newStatus, std::ostre
 }
 
 void StreamPool::waitAll() {
-    util::ScopedTiming(statistics_.waitTiming_);
+    util::ScopedTiming(statistics_.waitTimer_, statistics_.waitTiming_);
     while (not std::all_of(std::begin(buffers_), std::end(buffers_), [](MpiBuffer& buf) { return buf.isFree(); })) {}
 }
 

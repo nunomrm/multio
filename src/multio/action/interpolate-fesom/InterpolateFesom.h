@@ -23,13 +23,13 @@
 
 #include "FesomInterpolationWeights.h"
 #include "InterpolateFesom_debug.h"
-#include "eckit/codec/codec.h"
+#include "atlas_io/atlas-io.h"
 #include "eckit/exception/Exceptions.h"
 #include "eckit/filesystem/PathName.h"
 #include "multio/LibMultio.h"
 #include "multio/action/ChainedAction.h"
 
-namespace multio::action::interpolate_fesom {
+namespace multio::action::interpolateFESOM {
 
 template <typename MatrixType, typename = std::enable_if_t<std::is_floating_point<MatrixType>::value>>
 class Fesom2HEALPix {
@@ -68,7 +68,7 @@ private:
         size_t version;
         size_t NSideR;
         size_t levelR;
-        eckit::codec::RecordReader reader(file);
+        atlas::io::RecordReader reader(file);
         // Read the objects needed for the interpolation
         reader.read("version", version);
         reader.wait();
@@ -120,6 +120,7 @@ private:
         //     throw eckit::SeriousBug(os.str(), Here());
         // }
         INTERPOLATE_FESOM_OUT_STREAM << " - Fesom2HEALPix: exit readCache" << std::endl;
+        return;
     }
 
 public:
@@ -127,12 +128,9 @@ public:
                   size_t NSide, orderingConvention_e orderingConvention) {
         INTERPOLATE_FESOM_OUT_STREAM << " - Fesom2HEALPix: enter file cache constructor (from message)" << std::endl;
         // Generate cache file name
-        size_t level = static_cast<size_t>(                             //
-            msg.metadata().getOpt<std::int64_t>("level").value_or(      //
-                msg.metadata().getOpt<double>("levelist").value_or(0))  //
-        );
-        if ((msg.metadata().get<std::string>("category") == "ocean-3d")
-            && (msg.metadata().get<std::string>("fesomLevelType") == "level")) {
+        size_t level = static_cast<size_t>(msg.metadata().getLong("level", msg.metadata().getDouble("levelist", 0)));
+        if ((msg.metadata().getString("category") == "ocean-3d")
+            && (msg.metadata().getString("fesomLevelType") == "level")) {
             if (level == 0) {
                 std::ostringstream os;
                 os << " - Wrong level for the oceal level: " << std::endl;
@@ -140,12 +138,14 @@ public:
             }
             level--;
         }
-        const std::string domain = msg.metadata().get<std::string>("domain");
+        const std::string domain = msg.metadata().getString("domain");
         std::string file = generateCacheFileName(cachePath, fesomGridName, domain, NSide, orderingConvention, level);
 
         readCache(file);
 
         INTERPOLATE_FESOM_OUT_STREAM << " - Fesom2HEALPix: exit file cache constructor (from message)" << std::endl;
+        // Exit point
+        return;
     }
 
 
@@ -155,6 +155,8 @@ public:
         readCache(file);
 
         INTERPOLATE_FESOM_OUT_STREAM << " - Fesom2HEALPix: exit file cache constructor (from filename)" << std::endl;
+        // Exit point
+        return;
     }
 
 
@@ -191,6 +193,8 @@ public:
             }
         }
         INTERPOLATE_FESOM_OUT_STREAM << " - Fesom2HEALPix: exit intrpolate" << std::endl;
+        // Exit point
+        return;
     }
 
 
@@ -223,6 +227,8 @@ public:
         file.close();
 
         INTERPOLATE_FESOM_OUT_STREAM << " - Fesom2HEALPix: exit dumpCOO" << std::endl;
+        // Exit point
+        return;
     }
 
 
@@ -242,6 +248,8 @@ public:
         }
 
         INTERPOLATE_FESOM_OUT_STREAM << " - Fesom2HEALPix: exit getTriplets" << std::endl;
+        // Exit point
+        return;
     }
 };
 
@@ -273,4 +281,4 @@ private:
 };
 
 
-}  // namespace multio::action::interpolate_fesom
+}  // namespace multio::action::interpolateFESOM

@@ -15,9 +15,7 @@
 
 #include "multio/action/Plan.h"
 #include "multio/config/ComponentConfiguration.h"
-#include "multio/message/Message.h"
-#include "multio/message/Metadata.h"
-#include "multio/message/MetadataMatcher.h"
+#include "multio/message/MetadataSelector.h"
 #include "multio/util/FailureHandling.h"
 
 #include "eckit/log/Statistics.h"
@@ -33,6 +31,10 @@ namespace multio {
 using config::MultioConfiguration;
 using config::MultioConfigurationHolder;
 
+namespace message {
+class Message;
+class Metadata;
+}  // namespace message
 
 namespace server {
 
@@ -41,7 +43,7 @@ struct ClientFailureTraits {
     using FailureOptions = util::DefaultFailureOptions;
     using FailureState = util::DefaultFailureState;
     using TagSequence = util::integer_sequence<OnErrorType, OnErrorType::Propagate, OnErrorType::Recover,
-                                               OnErrorType::AbortTransport>;
+                                               OnErrorType::AbortAllTransports>;
     static inline std::optional<OnErrorType> parse(const std::string& str) {
         return util::parseErrorTag<OnErrorType, TagSequence>(str);
     }
@@ -64,11 +66,7 @@ public:
     void openConnections();
     void closeConnections();
 
-    void synchronize();
-
-    void dispatch(message::SharedMetadata metadata, eckit::Buffer&& payload, message::Message::Tag tag);
-    void dispatch(message::SharedMetadata metadata, const message::PayloadReference& payload,
-                  message::Message::Tag tag);
+    void dispatch(message::Metadata metadata, eckit::Buffer&& payload, message::Message::Tag tag);
 
     void dispatch(message::Message msg);
 
@@ -81,7 +79,7 @@ private:
     MultioClient(const eckit::LocalConfiguration& conf, MultioConfiguration&& multioConf);
 
     std::vector<std::unique_ptr<action::Plan>> plans_;
-    message::match::MatchReduce activeSelectors_{message::match::Reduce::Or};
+    message::MetadataSelectors activeSelectors_;
 
     eckit::Timing totClientTiming_;
     eckit::Timer totClientTimer_;

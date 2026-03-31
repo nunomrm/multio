@@ -31,14 +31,11 @@
 #include "eckit/option/SimpleOption.h"
 #include "eckit/value/Value.h"
 #include "metkit/codes/CodesSplitter.h"
-#include "multio/datamod/Glossary.h"
 #include "multio/ifsio/ifsio.h"
 #include "multio/tools/MultioTool.h"
 
 namespace multio {
 namespace test {
-
-namespace dm = multio::datamod;
 
 namespace {
 class TempFile {
@@ -72,19 +69,6 @@ public:
 
     std::vector<std::string> keys() { return eckit::LocalConfiguration::keys(); }
 };
-
-void parseStepRange(std::string const& stepRange, long& startStep, long& endStep) {
-    static const std::regex period_grammar("([0-9]+)-([0-9]+)");
-    std::smatch match;
-    if (std::regex_match(stepRange, match, period_grammar)) {
-        startStep = std::stol(match[1].str());
-        endStep = std::stol(match[2].str());
-    }
-    else {
-        throw eckit::SeriousBug("Wrong grammar in period definition : " + stepRange, Here());
-    }
-};
-
 }  // namespace
 
 class MultioFeed final : public multio::MultioTool {
@@ -117,9 +101,6 @@ private:
     bool decodeDoubleData_ = false;
     bool decodeSingleData_ = false;
     std::string configPath_ = "";
-    std::string stepRange_ = "";
-    long minStep_ = -1;
-    long maxStep_ = 1000000000;
 };
 
 MultioFeed::MultioFeed(int argc, char** argv) :
@@ -135,9 +116,6 @@ MultioFeed::MultioFeed(int argc, char** argv) :
                                               "(with data in single precision)"));
     options_.push_back(
         new eckit::option::SimpleOption<std::string>("plans", "Path to YAML/JSON file containing plans and actions."));
-
-    options_.push_back(
-        new eckit::option::SimpleOption<std::string>("stepRange", "Range of steps to process (e.g. 0-23)"));
 }
 
 void MultioFeed::init(const eckit::option::CmdArgs& args) {
@@ -154,15 +132,6 @@ void MultioFeed::init(const eckit::option::CmdArgs& args) {
     }
 
     args.get("plans", configPath_);
-
-    if (args.has("stepRange")) {
-        args.get("stepRange", stepRange_);
-    }
-    else {
-        stepRange_ = "0-1000000000";
-    }
-
-    parseStepRange(stepRange_, minStep_, maxStep_);
 
     if (!configPath_.empty()) {
         ::setenv("MULTIO_PLANS_FILE", configPath_.c_str(), 1);
@@ -192,129 +161,78 @@ void MultioFeed::execute(const eckit::option::CmdArgs& args) {
             mdOpts.nameSpace = "";
             msg.getMetadata(gathererDetailed, mdOpts);
 
-            if (metadataDetailed.has("stepRange")) {
-                long step = metadataDetailed.getLong("stepRange");
-                if (step < minStep_ || step > maxStep_) {
-                    continue;
-                }
-            }
-
-            if (metadataDetailed.has("step")) {
-                long step = metadataDetailed.getLong("step");
-                if (step < minStep_ || step > maxStep_) {
-                    continue;
-                }
-                // metadata.set("step", metadataDetailed.getLong("step"));
-            }
-
-            if (metadataDetailed.has("startStep") && metadataDetailed.has("endStep")) {
-                long startStep = metadataDetailed.getLong("startStep");
-                long endStep = metadataDetailed.getLong("endStep");
-                if (startStep < minStep_ || endStep > maxStep_) {
-                    continue;
-                }
-                // metadata.set("startStep", metadataDetailed.getLong("startStep"));
-                // metadata.set("endStep", metadataDetailed.getLong("endStep"));
-            }
-
-            if (!metadataDetailed.has("startStep") && metadataDetailed.has("endStep")) {
-                long endStep = metadataDetailed.getLong("endStep");
-                if (endStep < minStep_ || endStep > maxStep_) {
-                    continue;
-                }
-                // metadata.set("endStep", metadataDetailed.getLong("endStep"));
-            }
-
-            // Step gets extracted as string instead of long (because it could be ar ange).... we don't like step
-            // anayway... startStep/endStep is prefered
-            if (metadata.has(dm::legacy::Step))
-                metadata.set(dm::legacy::Step, metadata.getLong("step"));
-
             if (metadataDetailed.has("gridType"))
-                metadata.set(dm::legacy::GridType, metadataDetailed.getString("gridType"));
-
-            if (metadataDetailed.has("startStep"))
-                metadata.set(dm::legacy::StartStep, metadataDetailed.getLong("startStep"));
-            if (metadataDetailed.has("endStep"))
-                metadata.set(dm::legacy::EndStep, metadataDetailed.getLong("endStep"));
+                metadata.set("gridType", metadataDetailed.getString("gridType"));
 
             // Maybe use gridType?
             if (metadataDetailed.getBool("sphericalHarmonics", false)) {
-                metadata.set(dm::legacy::SphericalHarmonics, true);
+                metadata.set("sphericalHarmonics", true);
 
                 if (metadataDetailed.has("complexPacking"))
-                    metadata.set(dm::legacy::ComplexPacking, metadataDetailed.getLong("complexPacking"));
+                    metadata.set("complexPacking", metadataDetailed.getLong("complexPacking"));
                 if (metadataDetailed.has("generatingProcessIdentifier"))
-                    metadata.set(dm::legacy::GeneratingProcessIdentifier,
+                    metadata.set("generatingProcessIdentifier",
                                  metadataDetailed.getLong("generatingProcessIdentifier"));
                 if (metadataDetailed.has("J"))
-                    metadata.set(dm::legacy::PentagonalResolutionParameterJ, metadataDetailed.getLong("J"));
+                    metadata.set("pentagonalResolutionParameterJ", metadataDetailed.getLong("J"));
                 if (metadataDetailed.has("K"))
-                    metadata.set(dm::legacy::PentagonalResolutionParameterK, metadataDetailed.getLong("K"));
+                    metadata.set("pentagonalResolutionParameterK", metadataDetailed.getLong("K"));
                 if (metadataDetailed.has("M"))
-                    metadata.set(dm::legacy::PentagonalResolutionParameterM, metadataDetailed.getLong("M"));
+                    metadata.set("pentagonalResolutionParameterM", metadataDetailed.getLong("M"));
                 if (metadataDetailed.has("JS"))
-                    metadata.set(dm::legacy::SubSetJ, metadataDetailed.getLong("JS"));
+                    metadata.set("subSetJ", metadataDetailed.getLong("JS"));
                 if (metadataDetailed.has("KS"))
-                    metadata.set(dm::legacy::SubSetK, metadataDetailed.getLong("KS"));
+                    metadata.set("subSetK", metadataDetailed.getLong("KS"));
                 if (metadataDetailed.has("MS"))
-                    metadata.set(dm::legacy::SubSetM, metadataDetailed.getLong("MS"));
+                    metadata.set("subSetM", metadataDetailed.getLong("MS"));
 
                 // Seems not to be settable in codes
-                metadata.set(dm::legacy::UnpackedSubsetPrecision, 1);
+                metadata.set("unpackedSubsetPrecision", 1);
             }
 
             // Name is not required but convenient to print...
             if (metadataDetailed.has("name")) {
-                metadata.set(dm::legacy::Name, metadataDetailed.getString("name"));
+                metadata.set("name", metadataDetailed.getString("name"));
             }
             if (metadataDetailed.has("shortName")) {
-                metadata.set(dm::legacy::ShortName, metadataDetailed.getString("shortName"));
+                metadata.set("shortName", metadataDetailed.getString("shortName"));
             }
             if (metadataDetailed.has("paramId")) {
-                metadata.set(dm::legacy::ParamId, metadataDetailed.getLong("paramId"));
+                metadata.set("paramId", metadataDetailed.getLong("paramId"));
             }
             if (metadataDetailed.has("param")) {
-                metadata.set(dm::legacy::Param, metadataDetailed.getString("param"));
-                if (!metadata.has(dm::legacy::ParamId)) {
-                    metadata.set(dm::legacy::ParamId, metadataDetailed.getLong("param"));
+                metadata.set("param", metadataDetailed.getLong("param"));
+                if (!metadata.has("paramId")) {
+                    metadata.set("paramId", metadataDetailed.getLong("param"));
                 }
             }
             if (metadataDetailed.has("GRIBEditionNumber")) {
-                metadata.set(dm::legacy::GribEdition, metadataDetailed.getString("GRIBEditionNumber"));
+                metadata.set("gribEdition", metadataDetailed.getString("GRIBEditionNumber"));
             }
-            if (!metadata.has(dm::legacy::Level) && metadataDetailed.has("level")) {
-                metadata.set(dm::legacy::Level, metadataDetailed.getLong("level"));
+            if (!metadata.has("level") && metadataDetailed.has("level")) {
+                metadata.set("level", metadataDetailed.getString("level"));
             }
 
             // Inject metadata needed for statistics
-            if (!metadata.has(dm::legacy::TimeStep)) {
-                metadata.set(dm::legacy::TimeStep, 3600);
+            if (!metadata.has("timeStep")) {
+                metadata.set("timeStep", 3600);
             }
-            if (!metadata.has(dm::legacy::StepFrequency)) {
-                metadata.set(dm::legacy::StepFrequency, 1);
-            }
-
-            // Metadata required to handle missing values in statistics and interpolation
-            if (metadataDetailed.has("bitmapPresent")) {
-                metadata.set(dm::legacy::BitmapPresent, metadataDetailed.getBool("bitmapPresent"));
-            }
-            if (metadataDetailed.has("missingValue")) {
-                metadata.set(dm::legacy::MissingValue, metadataDetailed.getDouble("missingValue"));
+            if (!metadata.has("step-frequency")) {
+                metadata.set("step-frequency", 1);
             }
 
             // Multio pipelines require hhmmss format
-            if (metadata.has(dm::legacy::Time)) {
-                auto time = metadata.getLong("time");
-                metadata.set(dm::legacy::Time, time);
+            if (metadata.has("time")) {
+                auto time = 100 * metadata.getLong("time");
+                metadata.set("time", time);
             }
 
             eckit::Buffer data = msg.decode();
 
-            metadata.set(dm::legacy::GlobalSize, data.size() / sizeof(double));
+            metadata.set("globalSize", data.size() / sizeof(double));
 
             if (decodeDoubleData_) {
-                metadata.set(dm::legacy::Precision, "double");
+                metadata.set("precision", "double");
                 size_t words = eckit::round(data.size(), sizeof(fortint)) / sizeof(fortint);
                 fortint iwords = static_cast<fortint>(words);
 
@@ -323,7 +241,7 @@ void MultioFeed::execute(const eckit::option::CmdArgs& args) {
                 }
             }
             else {
-                metadata.set(dm::legacy::Precision, "single");
+                metadata.set("precision", "single");
                 size_t words
                     = eckit::round(data.size() / sizeof(double) * sizeof(float), sizeof(fortint)) / sizeof(fortint);
                 fortint iwords = static_cast<fortint>(words);
@@ -347,13 +265,9 @@ void MultioFeed::execute(const eckit::option::CmdArgs& args) {
                 ASSERT(false);
             }
         }
-
-        if (imultio_flush_()) {
-            ASSERT(false);
-        }
     }
 
-    if (imultio_flush_last_()) {
+    if (imultio_flush_()) {
         ASSERT(false);
     }
 

@@ -28,30 +28,39 @@ extern "C" {
 
 #include "multio/LibMultio.h"
 
-#include "multio/util/Timing.h"
+#include "multio/util/ScopedTimer.h"
 
 namespace {
 static void setStringValue(multio::MaestroCdo& cdo, const std::string& key, const std::string& value) {
-    const char* stringValue = value.c_str();
-    cdo.set_attribute(key, &stringValue, true);
+    cdo.set_attribute(key.c_str(), value.c_str(), true);
 }
 
 static void setInt64Value(multio::MaestroCdo& cdo, const std::string& key, const std::string& value) {
-    int64_t intValue = std::stoi(value);
-    cdo.set_attribute(key, &intValue, true);
+    int64_t intvalue = std::stoi(value);
+    cdo.set_attribute(key.c_str(), &intvalue, true);
 }
 
+static void setUInt64Value(multio::MaestroCdo& cdo, const std::string& key, const std::string& value) {
+    uint64_t intvalue = std::stoi(value);
+    cdo.set_attribute(key.c_str(), &intvalue, true);
+}
 
 using MaestroKeySetter = std::add_pointer<void(multio::MaestroCdo&, const std::string&, const std::string&)>::type;
 
 static const std::map<std::string, MaestroKeySetter> cdoValueSetters{
-    {"class", &setStringValue},      {"expver", &setStringValue},    {"stream", &setStringValue},
-    {"date", &setStringValue},       {"time", &setStringValue},      {"domain", &setStringValue},
-    {"type", &setStringValue},       {"levtype", &setStringValue},   {"step", &setInt64Value},
-    {"anoffset", &setInt64Value},    {"levelist", &setInt64Value},   {"param", &setInt64Value},
-    {"experiment", &setStringValue}, {"activity", &setStringValue},  {"generation", &setInt64Value},
-    {"realization", &setInt64Value}, {"model", &setStringValue},     {"resolution", &setStringValue},
-    {"frequency", &setStringValue},  {"direction", &setStringValue},
+    {"class", &setStringValue},   {"expver", &setStringValue},  {"stream", &setStringValue},
+    {"date", &setStringValue},    {"time", &setStringValue},    {"domain", &setStringValue},
+    {"type", &setStringValue},    {"levtype", &setStringValue}, {"step", &setInt64Value},
+    {"anoffset", &setInt64Value}, {"levelist", &setInt64Value}, {"param", &setInt64Value},
+    // # Additional attributes (D340.2.2.3). These keys will be put back once version 2.2.3 is released.
+    //{"experiment", &setStringValue},
+    //{"activity", &setStringValue},
+    //{"generation", &setInt64Value},
+    //{"realization", &setInt64Value},
+    //{"model", &setStringValue},
+    //{"resolution", &setStringValue},
+    //{"frequency", &setStringValue},
+    //{"direction", &setStringValue},
 };
 }  // namespace
 
@@ -65,28 +74,15 @@ MaestroSink::MaestroSink(const ComponentConfiguration& compConf) : multio::sink:
 
     schemaName_ = compConf.parsedConfig().getString("schema", ".maestro.ecmwf.");
 
-    util::Timing<> timing;
+    eckit::Timing timing;
     {
-        util::ScopedTiming timer{timing};
+        util::ScopedTimer timer{timing};
         ASSERT(!::getenv("MSTRO_COMPONENT_NAME"));
         ASSERT(::getenv("COMPONENT_NAME"));
         auto componentName
             = std::string{::getenv("COMPONENT_NAME")} + " -- " + std::to_string(eckit::mpi::comm().rank());
         mstro_status s = mstro_init(::getenv("MSTRO_WORKFLOW_NAME"), componentName.c_str(), 0);
-        if (s == MSTRO_OK)
-        {
-                LOG_DEBUG_LIB(LibMultio) << "Successfully initialized Maestro"  << std::endl;
-        }
-        else if(s == MSTRO_NOT_TWICE)
-        {
-                LOG_DEBUG_LIB(LibMultio) << "Not Twice - Maestro was already initialized" << std::endl;
-        }
-        else
-        {
-                LOG_DEBUG_LIB(LibMultio) << "Failed to initialize Maestro: (" <<mstro_status_description(s) << ")"<< std::endl;
-                ASSERT(s == MSTRO_OK); // fail hard
-        }
-
+        ASSERT(s == MSTRO_OK);
 
         auto component = std::string{::getenv("COMPONENT_NAME")};
         auto delimiter = std::string{" - "};
@@ -101,32 +97,26 @@ MaestroSink::MaestroSink(const ComponentConfiguration& compConf) : multio::sink:
             readyCdo_.demand();
         }
     }
-    timing.process();
-    eckit::Log::info() << " MaestroSink: initialising Maestro has taken " << timing.elapsedTimeSeconds() << "s"
-                       << std::endl;
+    eckit::Log::info() << " MaestroSink: initialising Maestro has taken " << timing.elapsed_ << "s" << std::endl;
 }
 
 MaestroSink::~MaestroSink() {
 
-    util::Timing<> timing;
+    eckit::Timing timing;
     {
-        util::ScopedTiming timer{timing};
-        if (readyCdoEnabled_) {
+        util::ScopedTimer timer{timing};
+        if (readyCdoEnabled_)
             readyCdo_.dispose();
-        }
-        flush();  // Call .withdraw() and .dispose() on all offered CDOs
         mstro_finalize();
     }
-    timing.process();
-    eckit::Log::info() << " MaestroSink: finalising Maestro has taken " << timing.elapsedTimeSeconds() << "s"
-                       << std::endl;
+    eckit::Log::info() << " MaestroSink: finalising Maestro has taken " << timing.elapsed_ << "s" << std::endl;
 
     statistics_.report(eckit::Log::info());
 }
 
 void MaestroSink::write(eckit::message::Message blob) {
     LOG_DEBUG_LIB(LibMultio) << "MaestroSink::write()" << std::endl;
-    util::ScopedTiming timing(statistics_.sinkWriteTiming_);
+    util::ScopedTiming timing(statistics_.sinkWriteTimer_, statistics_.sinkWriteTiming_);
 
     MaestroMetadata md;
 
@@ -136,17 +126,17 @@ void MaestroSink::write(eckit::message::Message blob) {
     std::ostringstream os;
     os << md;
 
-    util::ScopedTiming timer{timing_};
+    util::ScopedTimer timer{timing_};
 
     std::string name = "";
     {
-        util::ScopedTiming timing(statistics_.sinkNameTiming_);
+        util::ScopedTiming timing(statistics_.sinkNameTimer_, statistics_.sinkNameTiming_);
         name = cdo_namer_.name(md);
     }
     LOG_DEBUG_LIB(LibMultio) << "Name: " << name << std::endl;
 
     {
-        util::ScopedTiming timing(statistics_.sinkCdoCreationTiming_);
+        util::ScopedTiming timing(statistics_.sinkCdoCreationTimer_, statistics_.sinkCdoCreationTiming_);
         offered_cdos_.emplace_back(name.c_str(), blob.data(), blob.length());
     }
     auto& cdo = offered_cdos_.back();
@@ -154,7 +144,8 @@ void MaestroSink::write(eckit::message::Message blob) {
     LOG_DEBUG_LIB(LibMultio) << "metadata: " << md << std::endl;
 
     for (const auto& kw : md.keys()) {
-        util::ScopedTiming timing(statistics_.sinkAttributeTiming_);
+        util::ScopedTiming timing(statistics_.sinkAttributeTimer_, statistics_.sinkAttributeTiming_);
+
         auto mkey = schemaName_ + kw;
         auto value = md.get<std::string>(kw);
 
@@ -168,7 +159,7 @@ void MaestroSink::write(eckit::message::Message blob) {
     LOG_DEBUG_LIB(LibMultio) << " *** Offer cdo " << name.c_str() << std::endl;
 
     {
-        util::ScopedTiming timing(statistics_.sinkCdoOfferTiming_);
+        util::ScopedTiming timing(statistics_.sinkCdoOfferTimer_, statistics_.sinkCdoOfferTiming_);
         cdo.offer();  // Submit field
         ++cdoCount_;
     }
@@ -178,7 +169,7 @@ void MaestroSink::flush() {
     {
         eckit::Log::info() << "MaestroSink::flush()" << std::endl;
 
-        util::ScopedTiming timer{timing_};
+        util::ScopedTimer timer{timing_};
 
         std::for_each(begin(offered_cdos_), end(offered_cdos_), [](MaestroCdo& cdo) {
             LOG_DEBUG_LIB(LibMultio) << "Withdrawing CDO: " << cdo << std::endl;
@@ -188,10 +179,9 @@ void MaestroSink::flush() {
 
         offered_cdos_.clear();
     }
-    timing_.process();
     eckit::Log::info() << " MaestroSink: CDO count = " << cdoCount_ << " -- writing the last step has taken "
-                       << timing_.elapsedTimeSeconds() << "s" << std::endl;
-    timing_ = util::Timing<>{};  // Resetting
+                       << timing_.elapsed_ << "s" << std::endl;
+    timing_ = eckit::Timing{};  // Resetting
 }
 
 void MaestroSink::print(std::ostream& os) const {

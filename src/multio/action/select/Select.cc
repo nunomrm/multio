@@ -15,35 +15,29 @@
 #include "eckit/exception/Exceptions.h"
 
 #include "multio/LibMultio.h"
+#include "multio/util/ScopedTimer.h"
 
 using multio::message::Message;
-using multio::message::match::MatchReduce;
+using multio::message::MetadataSelectors;
 
-namespace multio::action::select {
+namespace multio::action {
 
 //--------------------------------------------------------------------------------------------------
 
-Select::Select(const ComponentConfiguration& compConf) :
-    ChainedAction{compConf}, selectors_{MatchReduce::construct(compConf.parsedConfig())} {}
+Select::Select(const ComponentConfiguration& compConf) : ChainedAction{compConf}, selectors_{compConf.parsedConfig()} {}
 
 void Select::executeImpl(Message msg) {
-    //pass through action for everything that is not a field, e.g. Flush
-    if ((msg.tag() == message::Message::Tag::Flush) || (msg.tag() == message::Message::Tag::Notification)) {
-        executeNext(std::move(msg));
-        return;
-    }
     if (matches(msg)) {
         executeNext(std::move(msg));
-        return;
     }
 }
 
 bool Select::matches(const Message& msg) const {
-    util::ScopedTiming timing{statistics_.actionTiming_};
-    return selectors_.matches(msg.metadata());
+    util::ScopedTiming timing{statistics_.localTimer_, statistics_.actionTiming_};
+    return selectors_.matches(msg);
 }
 
-void Select::matchedFields(MatchReduce& selectors) const {
+void Select::matchedFields(MetadataSelectors& selectors) const {
     selectors.extend(selectors_);
 }
 
@@ -57,4 +51,4 @@ static ActionBuilder<Select> SelectBuilder("select");
 
 //--------------------------------------------------------------------------------------------------
 
-}  // namespace multio::action::select
+}  // namespace multio::action

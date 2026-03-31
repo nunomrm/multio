@@ -31,8 +31,6 @@ class ThreadPeer : public Peer {
 public:
     ThreadPeer(std::thread t);
 
-    void join();
-
 private:
     util::ScopedThread thread_;
 };
@@ -53,11 +51,9 @@ private:
 
     void bufferedSend(const Message& msg) override;
 
-    void synchronize() override;
-
     void print(std::ostream& os) const override;
 
-    const Peer& localPeer() const override;
+    Peer localPeer() const override;
 
     PeerList createServerPeers() const override;
 

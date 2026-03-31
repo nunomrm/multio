@@ -22,7 +22,7 @@
 #include "multio/config/ComponentConfiguration.h"
 #include "multio/message/Message.h"
 
-namespace multio::action::renumber_healpix {
+namespace multio::action {
 
 
 class HEALPixRingToNest : public ChainedAction {
@@ -62,4 +62,4 @@ private:
     std::string cacheFileName_;
 };
 
-}  // namespace multio::action::renumber_healpix
+}  // namespace multio::action

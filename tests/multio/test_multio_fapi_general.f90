@@ -1,19 +1,20 @@
 module test_multio_fapi_general
+    use multio_config
     use multio_api
-    use, intrinsic :: iso_fortran_env, only: int64, error_unit
+    use, intrinsic :: iso_fortran_env
     use, intrinsic :: iso_c_binding
     implicit none
 
     integer :: test_error_handler_calls = 0
-    integer(int64) :: test_error_handler_last_context
+    integer(8) :: test_error_handler_last_context
     integer :: test_error_handler_last_error
 
     integer :: test_error_handler_calls2 = 0
-    integer(int64) :: test_error_handler_last_context2
+    integer(8) :: test_error_handler_last_context2
     integer :: test_error_handler_last_error2
 
     integer :: test_error_handler_calls3 = 0
-    integer(int64) :: test_error_handler_last_context3
+    integer(8) :: test_error_handler_last_context3
     integer :: test_error_handler_last_error3
 
 contains
@@ -33,13 +34,12 @@ contains
             return
         end if
 
-        !! TODO: is multio_config really needed
-        !! if (version_str /= multio_version_str) then
-        !!     write(error_unit, *) "Unexpected version: ", version_str
-        !!     write(error_unit, *) "Expected: ", multio_version_str
-        !!     success = .false.
-        !!     return
-        !! endif
+        if (version_str /= multio_version_str) then
+            write(error_unit, *) "Unexpected version: ", version_str
+            write(error_unit, *) "Expected: ", multio_version_str
+            success = .false.
+            return
+        endif
 
     end function
 
@@ -58,12 +58,12 @@ contains
             return
         end if
 
-        !! if (sha1 /= multio_git_sha1_str .and. sha1 /= "not available") then
-        !!     write(error_unit, *) "Unexpected git sha1: ", sha1
-        !!     write(error_unit, *) "Expected: ", multio_git_sha1_str
-        !!     success = .false.
-        !!     return
-        !! endif
+        if (sha1 /= multio_git_sha1_str .and. sha1 /= "not available") then
+            write(error_unit, *) "Unexpected git sha1: ", sha1
+            write(error_unit, *) "Expected: ", multio_git_sha1_str
+            success = .false.
+            return
+        endif
 
     end function
 
@@ -104,16 +104,14 @@ contains
     end function
 
     function test_multio_set_failure_handler() result(success)
-        use :: multio_api, only: failure_handler_t
-    implicit none
 
         ! Test that we can set failure handler and that it is being called on error with appropriate information
 
         logical :: success
-        integer(int64) :: original_context = 123456
-        integer(int64) :: context
-        integer(int64) :: context2
-        integer(int64) :: context3
+        integer(8) :: original_context = 123456
+        integer(8) :: context
+        integer(8) :: context2
+        integer(8) :: context3
         integer :: err
         type(multio_configuration) :: cc
         type(multio_handle) :: mio
@@ -122,7 +120,6 @@ contains
         type(multio_configuration) :: cc3
         type(multio_handle) :: mio3
         character(:), allocatable :: name
-        procedure(failure_handler_t), pointer :: pf
 
         success = .true.
         context = original_context
@@ -142,8 +139,7 @@ contains
         end if
 
         ! Set test error handler and its context
-        pf => test_error_handler
-        if (cc%set_failure_handler(pf, context) /= MULTIO_SUCCESS) then
+        if (cc%set_failure_handler(test_error_handler, context) /= MULTIO_SUCCESS) then
             write(error_unit, *) 'setting failure handler failed: ',multio_error_string(err)
             success = .false.
             return
@@ -180,7 +176,7 @@ contains
         !     return
         ! end if
 
-        err = cc%mpi_allow_world_default_comm( .FALSE. )
+        err = cc%mpi_allow_world_default_comm( .FALSE._1 )
         if (err /= MULTIO_SUCCESS) then
             write(error_unit, *) 'multio_configuration%allowWorldAsDefault failed unexpectedly: ',multio_error_string(err)
             success = .false.
@@ -226,9 +222,7 @@ contains
             success = .false.
             return
         end if
-
-        pf => test_error_handler2
-        if (cc2%set_failure_handler(pf, context2) /= MULTIO_SUCCESS) then
+        if (cc2%set_failure_handler(test_error_handler2, context2) /= MULTIO_SUCCESS) then
             write(error_unit, *) 'setting failure handler failed (2): ',multio_error_string(err)
             success = .false.
             return
@@ -239,8 +233,7 @@ contains
             success = .false.
             return
         end if
-        pf => test_error_handler3
-        if (cc3%set_failure_handler(pf, context3) /= MULTIO_SUCCESS) then
+        if (cc3%set_failure_handler(test_error_handler3, context3) /= MULTIO_SUCCESS) then
             write(error_unit, *) 'setting failure handler failed (3): ',multio_error_string(err)
             success = .false.
             return
@@ -259,16 +252,14 @@ contains
             success = .false.
             return
         end if
-
-        pf => test_error_handler2
-        if (cc2%set_failure_handler(pf, context2) /= MULTIO_SUCCESS) then
+        if (cc2%set_failure_handler(test_error_handler2, context2) /= MULTIO_SUCCESS) then
             write(error_unit, *) 'setting failure handler failed (2,2): ',multio_error_string(err)
             success = .false.
             return
         end if
 
         ! Trigger error on 2
-        err = cc2%mpi_allow_world_default_comm( .FALSE. )
+        err = cc2%mpi_allow_world_default_comm( .FALSE._1 )
         err = mio2%new(cc2)
         if (err == MULTIO_SUCCESS) then
             write(error_unit, *) 'multio_new (2) succeeded unexpectedly with "0"'
@@ -300,7 +291,7 @@ contains
 
 
         ! Trigger error on 3
-        err = cc3%mpi_allow_world_default_comm( .FALSE. )
+        err = cc3%mpi_allow_world_default_comm( .FALSE._1 )
         err = mio3%new(cc3)
         if (err == MULTIO_SUCCESS) then
             write(error_unit, *) 'multio_new (3) succeeded unexpectedly with "0"'
@@ -366,12 +357,9 @@ contains
     end function
 
     subroutine test_error_handler(context, error, info)
-        use, intrinsic :: iso_fortran_env, only: int64
-        use :: multio_api, only: multio_failure_info
-    implicit none
-        integer(int64), intent(inout) :: context
+        integer(8), intent(inout) :: context
         integer, intent(in) :: error
-        type(multio_failure_info), intent(in) :: info
+        class(multio_failure_info), intent(in) :: info
 
         test_error_handler_calls = test_error_handler_calls + 1
         test_error_handler_last_context = context
@@ -379,12 +367,9 @@ contains
     end subroutine
 
     subroutine test_error_handler2(context, error, info)
-        use, intrinsic :: iso_fortran_env, only: int64
-        use :: multio_api, only: multio_failure_info
-    implicit none
-        integer(int64), intent(inout) :: context
+        integer(8), intent(inout) :: context
         integer, intent(in) :: error
-        type(multio_failure_info), intent(in) :: info
+        class(multio_failure_info), intent(in) :: info
 
         test_error_handler_calls2 = test_error_handler_calls2 + 1
         test_error_handler_last_context2 = context
@@ -392,12 +377,9 @@ contains
     end subroutine
 
     subroutine test_error_handler3(context, error, info)
-        use, intrinsic :: iso_fortran_env, only: int64
-        use :: multio_api, only: multio_failure_info
-    implicit none
-        integer(int64), intent(inout) :: context
+        integer(8), intent(inout) :: context
         integer, intent(in) :: error
-        type(multio_failure_info), intent(in) :: info
+        class(multio_failure_info), intent(in) :: info
 
         test_error_handler_calls3 = test_error_handler_calls3 + 1
         test_error_handler_last_context3 = context

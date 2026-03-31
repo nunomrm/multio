@@ -21,7 +21,7 @@
 
 #include <optional>
 
-namespace multio::action::encode {
+namespace multio::action {
 
 class GridDownloader;
 
@@ -42,20 +42,20 @@ private:
 
     const std::string format_;
     CodesOverwrites overwrite_;
-    message::Metadata additionalMetadata_;
+    eckit::LocalConfiguration additionalMetadata_;
 
     const std::unique_ptr<GribEncoder> encoder_ = nullptr;
     const std::unique_ptr<GridDownloader> gridDownloader_ = nullptr;
 };
 
-//---------------------------------------------------------------------------------------------------------------------
+//=====================================================================================================================
 
 class EncodingException : public eckit::Exception {
 public:
     EncodingException(const std::string& reason, const eckit::CodeLocation& location = eckit::CodeLocation());
 };
 
-//---------------------------------------------------------------------------------------------------------------------
+//=====================================================================================================================
 
 
-}  // namespace multio::action::encode
+}  // namespace multio::action

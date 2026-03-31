@@ -8,11 +8,11 @@
  * does it submit to any jurisdiction.
  */
 
-/// @author Philipp Geier
-/// @author Domokos Sármány
+/// @author Domokos Sarmany
 /// @author Simon Smart
+/// @author Tiago Quintino
 
-/// @date Nov 2022
+/// @date Jan 2019
 
 #pragma once
 
@@ -21,7 +21,7 @@
 #include "multio/action/ChainedAction.h"
 #include "multio/message/MetadataMapping.h"
 
-namespace multio::action::metadata_mapping {
+namespace multio::action {
 
 class MetadataMapping : public ChainedAction {
 public:
@@ -30,7 +30,9 @@ public:
     void executeImpl(message::Message msg) override;
 
 protected:
-    void applyInplace(message::Metadata& md) const;
+    void applyInplace(message::Metadata& msg) const;
+    message::Metadata apply(const message::Metadata& msg) const;
+    message::Metadata apply(message::Metadata&& msg) const;
 
 private:
     void print(std::ostream& os) const override;
@@ -40,4 +42,4 @@ private:
     message::MetadataMappingOptions options_;
 };
 
-}  // namespace multio::action::metadata_mapping
+}  // namespace multio::action

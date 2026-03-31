@@ -7,7 +7,6 @@
 
 #include "multio/domain/MaskCompression.h"
 #include "multio/message/Message.h"
-#include "multio/util/VariantHelpers.h"
 
 namespace multio {
 namespace domain {
@@ -16,7 +15,7 @@ Domain::Domain(std::vector<int32_t>&& def) : definition_(std::move(def)) {}
 
 //------------------------------------------------------------------------------------------------------------
 
-Unstructured::Unstructured(std::vector<int32_t>&& def, std::int64_t globalSize_val) :
+Unstructured::Unstructured(std::vector<int32_t>&& def, long globalSize_val) :
     Domain{std::move(def)}, globalSize_{globalSize_val} {}
 
 void Unstructured::toLocal(const std::vector<double>& global, std::vector<double>& local) const {
@@ -35,21 +34,21 @@ void Unstructured::toBitmask(const message::Message&, std::vector<bool>&) const 
     NOTIMP;
 }
 
-std::int64_t Unstructured::localSize() const {
+long Unstructured::localSize() const {
     return definition_.size();
 }
 
-std::int64_t Unstructured::globalSize() const {
+long Unstructured::globalSize() const {
     return globalSize_;
 }
 
-std::int64_t Unstructured::partialSize() const {
+long Unstructured::partialSize() const {
     return globalSize_;
 }
 
 void Unstructured::collectIndices(const message::Message& local, std::set<int32_t>& glIndices) const {
     const auto dataSize = (local.precision() == util::PrecisionTag::Float) ? sizeof(float) : sizeof(double);
-    const auto payloadSize = static_cast<std::int64_t>(local.payload().size() / dataSize);
+    const auto payloadSize = static_cast<long>(local.payload().size() / dataSize);
     if (payloadSize != localSize()) {
         throw eckit::SeriousBug{"Mismatch between sizes of index map and local field", Here()};
     }
@@ -64,7 +63,9 @@ void Unstructured::toGlobalImpl(const message::Message& local, message::Message&
     ASSERT(local.payload().size() == definition_.size() * sizeof(Precision));
 
     auto lit = static_cast<const Precision*>(local.payload().data());
-    auto git = static_cast<Precision*>(global.payload().modifyData());
+    // Explicitly modify shared payload because we know that the global message has been created
+    // for aggregation of messages and is not sent out yet
+    auto git = static_cast<Precision*>(global.sharedPayload()->data());
     for (auto id : definition_) {
         *(git + id) = *lit++;
     }
@@ -129,7 +130,7 @@ void Structured::toBitmask(const message::Message& local, std::vector<bool>& bma
 
     ASSERT(static_cast<std::set<int32_t>::size_type>(ni_global * nj_global) == bmask.size());
 
-    EncodedBitMaskPayload encodedMaskPayload(local.payload());
+    EncodedMaskPayload encodedMaskPayload(local.payload());
     std::size_t expectedBitmaskSize = data_nj * data_ni;
     if (encodedMaskPayload.size() != (data_nj * data_ni)) {
         std::ostringstream oss;
@@ -184,7 +185,9 @@ void Structured::toGlobalImpl(const message::Message& local, message::Message& g
     }
 
     auto lit = static_cast<const Precision*>(local.payload().data());
-    auto git = static_cast<Precision*>(global.payload().modifyData());
+    // Explicitly modify shared payload because we know that the global message has been created
+    // for aggregation of messages and is not sent out yet
+    auto git = static_cast<Precision*>(global.sharedPayload()->data());
     for (auto j = data_jbegin; j != data_jbegin + data_nj; ++j) {
         for (auto i = data_ibegin; i != data_ibegin + data_ni; ++i, ++lit) {
             if (inRange(i, 0, ni) && inRange(j, 0, nj)) {
@@ -216,7 +219,7 @@ void Structured::collectIndicesImpl(const message::Message& local, std::set<int3
 
     ASSERT(glIndices.size() < static_cast<std::set<int32_t>::size_type>(ni_global * nj_global));
 
-    auto payloadSize = static_cast<std::int64_t>(local.payload().size() / sizeof(Precision));
+    auto payloadSize = static_cast<long>(local.payload().size() / sizeof(Precision));
     if (payloadSize != data_ni * data_nj) {  // Payload contains halo information
         throw eckit::SeriousBug{"Mismatch between sizes of index map and local field", Here()};
     }
@@ -233,7 +236,7 @@ void Structured::collectIndicesImpl(const message::Message& local, std::set<int3
     }
 }
 
-std::int64_t Structured::localSize() const {
+long Structured::localSize() const {
     // Local domain's dimensions
     auto ni = definition_[3];
     auto nj = definition_[5];
@@ -241,7 +244,7 @@ std::int64_t Structured::localSize() const {
     return ni * nj;
 };
 
-std::int64_t Structured::globalSize() const {
+long Structured::globalSize() const {
     // Global domain's dimenstions
     auto ni_global = definition_[0];
     auto nj_global = definition_[1];
@@ -249,7 +252,7 @@ std::int64_t Structured::globalSize() const {
     return ni_global * nj_global;
 };
 
-std::int64_t Structured::partialSize() const {
+long Structured::partialSize() const {
     return definition_[11];
 }
 
@@ -269,13 +272,13 @@ void Spectral::toBitmask(const message::Message&, std::vector<bool>&) const {
     NOTIMP;
 }
 
-std::int64_t Spectral::localSize() const {
+long Spectral::localSize() const {
     NOTIMP;
 };
-std::int64_t Spectral::globalSize() const {
+long Spectral::globalSize() const {
     NOTIMP;
 };
-std::int64_t Spectral::partialSize() const {
+long Spectral::partialSize() const {
     NOTIMP;
 };
 

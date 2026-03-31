@@ -9,7 +9,7 @@
 
 #include "multio/LibMultio.h"
 
-namespace multio::action::statistics {
+namespace multio::action {
 
 
 uint64_t IOBuffer::checksum() const {
@@ -32,6 +32,7 @@ IOBuffer::IOBuffer(std::vector<uint64_t>& buffer, size_t size) : buffer_{buffer}
         os << "ERROR : size too large for buffer";
         throw eckit::SeriousBug{os.str(), Here()};
     }
+    return;
 };
 
 size_t IOBuffer::size() const {
@@ -81,6 +82,7 @@ void IOBuffer::zero() {
 
 void IOBuffer::computeChecksum() {
     buffer_[size_ - 1] = checksum();
+    return;
 };
 
 void IOBuffer::checkChecksum() const {
@@ -89,49 +91,45 @@ void IOBuffer::checkChecksum() const {
         os << "ERROR : wrong Checksum";
         throw eckit::SeriousBug{os.str(), Here()};
     }
+    return;
 };
 
 // -------------------------------------------------------------------------------------------------------------------
 
-StatisticsIO::StatisticsIO(const std::string& basePath, const std::string& uniqueID, const std::string& ext) :
-    hasValidDateTime_{false}, basePath_{basePath}, uniqueID_{uniqueID}, ext_{ext}, dateTime_{""}, buffer_{8192, 0} {
-    if (!eckit::PathName{basePath_}.exists()) {
-        std::ostringstream os;
-        os << "ERROR : base path does not exist: " << basePath_;
-        throw eckit::SeriousBug{os.str(), Here()};
-    }
-    // Create the unique restart directory
-    // eckit::PathName{getUniqueRestartDir()}.mkdir();
+StatisticsIO::StatisticsIO(const std::string& path, const std::string& prefix, const std::string& ext) :
+    path_{path}, prefix_{prefix}, prevStep_{0}, currStep_{0}, key_{""}, name_{""}, ext_{ext}, buffer_{8192, 0} {};
+
+
+void StatisticsIO::setKey(const std::string& key) {
+    key_ = key;
+    return;
 };
 
-StatisticsIO::~StatisticsIO() {
-    buffer_.clear();
+void StatisticsIO::setCurrStep(long step) {
+    currStep_ = step;
+    return;
 };
 
-void StatisticsIO::setDateTime(const std::string& dateTime) {
-    dateTime_ = dateTime;
-    hasValidDateTime_ = true;
+void StatisticsIO::setPrevStep(long step) {
+    prevStep_ = step;
+    return;
 };
 
-std::string StatisticsIO::getDateTime() {
-    return dateTime_;
-}
-
-std::string StatisticsIO::pushDir(const std::string& directory) {
-    if (!hasValidDateTime_) {
-        std::ostringstream os;
-        os << "ERROR : no valid datetime found";
-        throw eckit::SeriousBug{os.str(), Here()};
-    }
-    path_.push_back(directory);
-    return getCurrentDir();
+void StatisticsIO::setSuffix(const std::string& suffix) {
+    suffix_ = suffix;
+    return;
 };
 
-std::string StatisticsIO::popDir() {
-    path_.pop_back();
-    return getCurrentDir();
+void StatisticsIO::reset() {
+    currStep_ = 0;
+    prevStep_ = 0;
+    key_ = "";
+    suffix_ = "";
+    name_ = "";
+    std::transform(buffer_.cbegin(), buffer_.cend(), buffer_.begin(),
+                   [](const std::uint64_t v) { return static_cast<std::uint64_t>(0.0); });
+    return;
 };
-
 
 IOBuffer StatisticsIO::getBuffer(std::size_t size) {
     std::size_t tmp = buffer_.size();
@@ -142,94 +140,40 @@ IOBuffer StatisticsIO::getBuffer(std::size_t size) {
     return IOBuffer{buffer_, size};
 };
 
-
-std::vector<eckit::PathName> StatisticsIO::getFiles() {
-    if (!currentDirExists()) {
-        std::ostringstream os;
-        os << "ERROR : Curret director does not exists: " << getCurrentDir();
-        throw eckit::SeriousBug{os.str(), Here()};
-    }
-    std::string path = getCurrentDir();
-    std::vector<eckit::PathName> files_tmp;
-    std::vector<eckit::PathName> files;
-    std::vector<eckit::PathName> dirs;
-    eckit::PathName{path}.children(files_tmp, dirs);
-    for (const auto& file : files_tmp) {
-        if (file.extension() != ".txt") {
-            files.push_back(file);
-            LOG_DEBUG_LIB(LibMultio) << "File found :: " << file << ", " << file.extension() << std::endl;
-        }
-    }
-    return files;
-};
-
-
-std::vector<eckit::PathName> StatisticsIO::getDirs() {
-    if (!currentDirExists()) {
-        std::ostringstream os;
-        os << "ERROR : Curret directory does not exists: " << getCurrentDir();
-        throw eckit::SeriousBug{os.str(), Here()};
-    }
-    std::string path = getCurrentDir();
-    std::vector<eckit::PathName> files;
-    std::vector<eckit::PathName> dirs;
-    eckit::PathName path2{path};
-    path2.children(files, dirs);
-    return dirs;
-};
-
-
-std::string StatisticsIO::getUniqueRestartDir() const {
+std::string StatisticsIO::generatePathName() const {
     std::ostringstream os;
-    os << basePath_ << "/" << uniqueID_;
+    os << path_ << "/" << prefix_ << "/" << key_ << "/" << suffix_;
+    eckit::PathName{os.str()}.mkdir();
     return os.str();
-};
-
-std::string StatisticsIO::getCurrentDir() const {
-    if (!hasValidDateTime_) {
-        std::ostringstream os;
-        os << "ERROR : no valid datetime found";
-        throw eckit::SeriousBug{os.str(), Here()};
-    }
-    std::ostringstream os;
-    os << basePath_ << "/" << uniqueID_ << "/" << dateTime_;
-    for (const auto& dir : path_) {
-        os << "/" << dir;
-    }
-    return os.str();
-};
-
-std::string StatisticsIO::getRestartSymLink() const {
-    std::ostringstream os;
-    os << basePath_ << "/" << uniqueID_ << "/" << "latest";
-    return os.str();
-}
-
-bool StatisticsIO::currentDirExists() const {
-    return eckit::PathName{getCurrentDir()}.exists();
-};
-
-void StatisticsIO::createCurrentDir() const {
-    eckit::PathName{getCurrentDir()}.mkdir();
-};
-
-void StatisticsIO::createDateTimeDir() const {
-    if (!hasValidDateTime_) {
-        std::ostringstream os;
-        os << "ERROR : no valid datetime found";
-        throw eckit::SeriousBug{os.str(), Here()};
-    }
-    std::ostringstream dir;
-    dir << basePath_ << "/" << uniqueID_ << "/" << dateTime_;
-    eckit::PathName{dir.str()}.mkdir();
 };
 
 std::string StatisticsIO::generateCurrFileName(const std::string& name) const {
     std::ostringstream os;
-    os << getCurrentDir() << "/" << name << "." << ext_;
+    os << generatePathName() << "/" << name << "-" << std::setw(10) << std::setfill('0') << currStep_ << "." << ext_;
     return os.str();
 };
 
+std::string StatisticsIO::generatePrevFileName(const std::string& name) const {
+    std::ostringstream os;
+    os << generatePathName() << "/" << name << "-" << std::setw(10) << std::setfill('0') << prevStep_ << "." << ext_;
+    return os.str();
+};
+
+void StatisticsIO::removeCurrFile(const std::string& name) const {
+    eckit::PathName file{generateCurrFileName(name)};
+
+    if (file.exists()) {
+        file.unlink();
+    }
+};
+
+void StatisticsIO::removePrevFile(const std::string& name) const {
+    eckit::PathName file{generatePrevFileName(name)};
+
+    if (file.exists()) {
+        file.unlink();
+    }
+};
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -260,17 +204,16 @@ void StatisticsIOFactory::list(std::ostream& out) {
     }
 }
 
-std::shared_ptr<StatisticsIO> StatisticsIOFactory::build(const std::string& name, const std::string& basePath,
-                                                         const std::string& uniqueID) {
+std::shared_ptr<StatisticsIO> StatisticsIOFactory::build(const std::string& name, const std::string& path,
+                                                         const std::string& prefix) {
     std::lock_guard<std::recursive_mutex> lock{mutex_};
 
     LOG_DEBUG_LIB(LibMultio) << "Looking for StatisticsIOFactory [" << name << "]" << std::endl;
 
     auto f = factories_.find(name);
 
-    if (f != factories_.end()) {
-        return f->second->make(basePath, uniqueID);
-    }
+    if (f != factories_.end())
+        return f->second->make(path, prefix);
 
     LOG_DEBUG_LIB(LibMultio) << "No StatisticsIOFactory for [" << name << "]" << std::endl;
     LOG_DEBUG_LIB(LibMultio) << "StatisticsIOFactories are:" << std::endl;
@@ -291,4 +234,4 @@ StatisticsIOBuilderBase::~StatisticsIOBuilderBase() {
 
 //----------------------------------------------------------------------------------------------------------------------
 
-}  // namespace multio::action::statistics
+}  // namespace multio::action

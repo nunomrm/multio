@@ -1,5 +1,3 @@
-if(HAVE_MULTIO_BUILD_TOOLS)
-
 set(PREFIX multio_tests_action_interpolate-fesom)
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/cache)
@@ -7,7 +5,7 @@ configure_file( ${CMAKE_CURRENT_SOURCE_DIR}/fesom_CORE2_ngrid_mappings.yaml ${CM
 
 ecbuild_get_test_multidata(
     TARGET   ${PREFIX}_get_data
-    DIRNAME  multio/test-data/tests/actions/interpolate-fesom
+    DIRNAME  multio/tests/actions/interpolate-fesom
     DIRLOCAL ${CMAKE_CURRENT_BINARY_DIR}
     NAMES
         "fesom_CORE2_mesh.atlas"
@@ -35,7 +33,7 @@ ecbuild_get_test_multidata(
 
 ecbuild_get_test_multidata(
     TARGET   ${PREFIX}_get_cache
-    DIRNAME  multio/test-data/tests/actions/interpolate-fesom/cache
+    DIRNAME  multio/tests/actions/interpolate-fesom/cache
     DIRLOCAL ${CMAKE_CURRENT_BINARY_DIR}/cache
     NAMES
         "fesom_CORE2_ngrid_to_HEALPix_000032_double_ring_00000000.atlas"
@@ -150,25 +148,25 @@ foreach(_gridType   CORE2 )
 
 
                         ecbuild_add_test(
-                            ENABLED       OFF
-                            TARGET        ${PREFIX}_${_test}_run
-                            TEST_REQUIRES ${PREFIX}_get_data ${PREFIX}_get_cache
-                            COMMAND       multio-feed
-                            ARGS          --decode --plans=${CMAKE_CURRENT_SOURCE_DIR}/${_test}.yaml ${_feed})
+                            ENABLED      OFF
+                            TARGET       ${PREFIX}_${_test}_run
+                            TEST_DEPENDS ${PREFIX}_get_data ${PREFIX}_get_cache
+                            COMMAND      multio-feed
+                            ARGS         --decode --plans=${CMAKE_CURRENT_SOURCE_DIR}/${_test}.yaml ${_feed})
 
                         ecbuild_add_test(
-                            ENABLED       OFF
-                            TARGET        ${PREFIX}_${_test}_check_metadata
-                            TEST_REQUIRES ${PREFIX}_${_test}_run
-                            COMMAND       grib_compare
-                            ARGS          -H ${_reference} ${_result})
+                            ENABLED      OFF
+                            TARGET       ${PREFIX}_${_test}_check_metadata
+                            TEST_DEPENDS ${PREFIX}_${_test}_run
+                            COMMAND      grib_compare
+                            ARGS         -H ${_reference} ${_result})
 
                         ecbuild_add_test(
-                            ENABLED       OFF
-                            TARGET        ${PREFIX}_${_test}_check_values
-                            TEST_REQUIRES ${PREFIX}_${_test}_check_metadata
-                            COMMAND       grib_compare
-                            ARGS          -P -T10 ${_reference} ${_result})
+                            ENABLED      OFF
+                            TARGET       ${PREFIX}_${_test}_check_values
+                            TEST_DEPENDS ${PREFIX}_${_test}_check_metadata
+                            COMMAND      grib_compare
+                            ARGS         -P -T10 ${_reference} ${_result})
 
                     endforeach()
                 endforeach()
@@ -176,5 +174,3 @@ foreach(_gridType   CORE2 )
         endforeach()
     endforeach()
 endforeach()
-
-endif()

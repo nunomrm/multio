@@ -11,21 +11,31 @@
 #include "Sink.h"
 
 #include <fstream>
-#include <sstream>
 
 #include "eckit/exception/Exceptions.h"
 #include "eckit/message/Message.h"
 
 #include "multio/LibMultio.h"
+#include "multio/util/ScopedTimer.h"
+#include "multio/util/logfile_name.h"
 
-namespace multio::action::sink {
+namespace multio::action {
 
-Sink::Sink(const ComponentConfiguration& compConf) : Action(compConf), mio_{compConf} {}
+Sink::Sink(const ComponentConfiguration& compConf) :
+    Action(compConf), report_{compConf.parsedConfig().getBool("report", true)}, mio_{compConf} {}
+
+Sink::~Sink() {
+    if (report_) {
+        std::ofstream logFile{util::logfile_name(), std::ios_base::app};
+        mio_.report(logFile);
+    }
+}
 
 void Sink::executeImpl(Message msg) {
 
     switch (msg.tag()) {
         case Message::Tag::Field:
+        case Message::Tag::Grib:
             write(msg);
             return;
 
@@ -37,17 +47,13 @@ void Sink::executeImpl(Message msg) {
             trigger(msg);
             return;
 
-        case Message::Tag::Parametrization:
-            eckit::Log::debug<LibMultio>() << "Parametrization message: " << msg << std::endl;
-            return;
-
         default:
             throw eckit::SeriousBug("Cannot handle message <" + Message::tag2str(msg.tag()) + ">");
     }
 }
 
 void Sink::write(Message msg) {
-    util::ScopedTiming timing{statistics_.actionTiming_};
+    util::ScopedTiming timing{statistics_.localTimer_, statistics_.actionTiming_};
 
     eckit::message::Message blob = to_eckit_message(msg);
 
@@ -55,34 +61,27 @@ void Sink::write(Message msg) {
 }
 
 void Sink::flush() {
-    util::ScopedTiming timing{statistics_.actionTiming_};
+    util::ScopedTiming timing{statistics_.localTimer_, statistics_.actionTiming_};
     mio_.flush();
 }
 
 void Sink::trigger(const Message& msg) {
-    util::ScopedTiming timing{statistics_.actionTiming_};
+    util::ScopedTiming timing{statistics_.localTimer_, statistics_.actionTiming_};
 
     eckit::StringDict metadata;
 
-    auto triggerKey = msg.metadata().getOpt<std::string>("trigger");
-    if (!triggerKey) {
+    if (!msg.metadata().has("trigger")) {
         throw message::MetadataMissingKeyException("trigger", Here());
     }
-    auto searchTriggerKey = msg.metadata().find(*triggerKey);
-    if (searchTriggerKey == msg.metadata().end()) {
-        throw message::MetadataMissingKeyException(*triggerKey, Here());
-    }
+    const std::string triggerKey = msg.metadata().getString("trigger");
 
-    auto triggerKeyVal = util::visitTranslate<std::string>(searchTriggerKey->second);
-    if (!triggerKeyVal) {
-        std::ostringstream oss;
-        oss << "Sink::trigger: Value for triggerKey \"" << *triggerKey << "\" can not be translated to string: ";
-        oss << searchTriggerKey->second;
-        throw eckit::UserError(oss.str(), Here());
+    if (!msg.metadata().has(triggerKey)) {
+        throw message::MetadataMissingKeyException(triggerKey, Here());
     }
-    metadata[*triggerKey] = *triggerKeyVal;
+    // TODO - handle type correctly once metadata is refactored
+    metadata[triggerKey] = msg.metadata().getString(triggerKey);
 
-    eckit::Log::debug<LibMultio>() << "Trigger " << *triggerKey << " with value " << metadata[*triggerKey]
+    eckit::Log::debug<LibMultio>() << "Trigger " << triggerKey << " with value " << metadata[triggerKey]
                                    << " is being called..." << std::endl;
 
     mio_.trigger(metadata);
@@ -94,4 +93,4 @@ void Sink::print(std::ostream& os) const {
 
 static ActionBuilder<Sink> SinkBuilder("sink");
 
-}  // namespace multio::action::sink
+}  // namespace multio::action

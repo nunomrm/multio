@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <fstream>
-#include <map>
 #include <random>
 
 #include "eccodes.h"
@@ -16,12 +15,13 @@
 #include "eckit/option/CmdArgs.h"
 #include "eckit/option/SimpleOption.h"
 
+#include "metkit/codes/GribHandle.h"
+
 #include "multio/LibMultio.h"
 #include "multio/action/Plan.h"
 
 #include "multio/config/ComponentConfiguration.h"
-#include "multio/config/PathConfiguration.h"
-#include "multio/datamod/Glossary.h"
+#include "multio/config/ConfigurationPath.h"
 #include "multio/domain/Domain.h"
 #include "multio/message/Message.h"
 #include "multio/server/Listener.h"
@@ -29,7 +29,7 @@
 #include "multio/transport/MpiTransport.h"
 #include "multio/transport/TcpTransport.h"
 #include "multio/transport/ThreadTransport.h"
-#include "multio/util/Timing.h"
+#include "multio/util/ScopedTimer.h"
 #include "multio/util/print_buffer.h"
 
 using multio::LibMultio;
@@ -50,8 +50,6 @@ using multio::transport::Transport;
 using multio::transport::TransportFactory;
 
 using namespace multio::server;
-
-namespace dm = multio::datamod;
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -100,9 +98,6 @@ std::vector<Chunks> create_chunks(size_t sz) {
     }
     return chunks;
 }
-
-std::map<std::string, std::string> levtype_to_typeOfLevel{
-    {"ml", "hybrid"}, {"pl", "isobaricInhPa"}, {"sfc", "surface"}};
 
 std::vector<long> create_levlist(const std::string& ltype, size_t sz = 91, size_t start = 1) {
 
@@ -225,11 +220,10 @@ public:  // methods
 private:
     using PeerList = std::vector<std::unique_ptr<Peer>>;
 
-    class TestPolicy {
+    class TestPolicy : public MultioConfigurationHolder {
     public:
-        TestPolicy(const eckit::LocalConfiguration& conf, std::optional<MultioConfiguration>&& multioConf,
-                   size_t clientCount) :
-            multioHandle(std::move(multioConf)), conf_(conf), clientCount_(clientCount) {}
+        TestPolicy(const eckit::LocalConfiguration& conf, MultioConfiguration&& multioConf, size_t clientCount) :
+            MultioConfigurationHolder(std::move(multioConf)), conf_(conf), clientCount_(clientCount) {}
         virtual ~TestPolicy() = default;
 
         virtual PeerList computeServerPeers() = 0;
@@ -239,9 +233,6 @@ private:
         virtual void execute(MultioHammer& hammer, const eckit::option::CmdArgs&) const { hammer.executeGeneric(); }
 
         virtual void checkData(MultioHammer& hammer) const { hammer.testData(); }
-
-        // Make multio conf public
-        std::optional<MultioConfigurationHolder> multioHandle;
 
     protected:
         eckit::LocalConfiguration conf_;
@@ -270,13 +261,13 @@ private:
 
         std::shared_ptr<Transport> createTransport() override {
             if (comm_.rank() < clientCount_) {
-                multioHandle->multioConfig().setLocalPeerTag(multio::config::LocalPeerTag::Client);
+                multioConfig().setLocalPeerTag(multio::config::LocalPeerTag::Client);
             }
             else {
-                multioHandle->multioConfig().setLocalPeerTag(multio::config::LocalPeerTag::Server);
+                multioConfig().setLocalPeerTag(multio::config::LocalPeerTag::Server);
             }
             return std::shared_ptr<Transport>(
-                TransportFactory::instance().build("mpi", ComponentConfiguration(conf_, multioHandle->multioConfig())));
+                TransportFactory::instance().build("mpi", ComponentConfiguration(conf_, multioConfig())));
         };
 
         void checkData(MultioHammer& hammer) const override {
@@ -296,12 +287,8 @@ private:
     class TCPTestPolicy final : public TestPolicy {
     public:
         TCPTestPolicy(const eckit::LocalConfiguration& conf, MultioConfiguration&& multioConf, size_t clientCount,
-                      int localPort, bool checkDataOnly) :
-            TestPolicy(conf, checkDataOnly ? std::nullopt : std::optional<MultioConfiguration>{std::move(multioConf)},
-                       clientCount),
-            port_(localPort),
-            rank_(-1),
-            checkDataOnly_{checkDataOnly} {}
+                      int localPort) :
+            TestPolicy(conf, std::move(multioConf), clientCount), port_(localPort), rank_(-1) {}
 
         PeerList computeServerPeers() override {
             PeerList serverPeers;
@@ -336,17 +323,14 @@ private:
         std::shared_ptr<Transport> createTransport() override {
             conf_.set("local_port", port_);
             return std::shared_ptr<Transport>(
-                TransportFactory::instance().build("tcp", ComponentConfiguration(conf_, multioHandle->multioConfig())));
+                TransportFactory::instance().build("tcp", ComponentConfiguration(conf_, multioConfig())));
         };
 
-        void execute(MultioHammer& hammer, const eckit::option::CmdArgs&) const override {
-            if (!checkDataOnly_) {
-                hammer.executeGeneric();
-            }
-        }
-
         void checkData(MultioHammer& hammer) const override {
-            if (checkDataOnly_) {
+            // Wait for the plan to finish.
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+
+            if (rank_ == 0) {
                 // Test is destructive(deletes the output files), only perform the test on the first process.
                 hammer.testData();
             }
@@ -355,7 +339,6 @@ private:
     private:
         int port_;
         int rank_;
-        bool checkDataOnly_;
     };
 
     class ThreadTestPolicy final : public TestPolicy {
@@ -371,8 +354,8 @@ private:
         int computeRank() override { return 0; }
 
         std::shared_ptr<Transport> createTransport() override {
-            return std::shared_ptr<Transport>(TransportFactory::instance().build(
-                "thread", ComponentConfiguration(conf_, multioHandle->multioConfig())));
+            return std::shared_ptr<Transport>(
+                TransportFactory::instance().build("thread", ComponentConfiguration(conf_, multioConfig())));
         };
 
         void execute(MultioHammer& hammer, const eckit::option::CmdArgs&) const override { hammer.executeThread(); }
@@ -430,6 +413,7 @@ private:
     std::string configPath_ = "";
     std::string transportType_ = "none";
     int port_ = 7777;
+    int rank_ = 0;
 
     size_t clientCount_ = 1;
     size_t serverCount_ = 1;
@@ -439,8 +423,9 @@ private:
 
     long ensMember_ = 1;
     long sleep_ = 0;
-    bool checkDataOnly_ = false;
 
+    PeerList serverPeers_;
+    std::shared_ptr<Transport> transport_;
     std::unique_ptr<TestPolicy> testPolicy_;
 
     eckit::LocalConfiguration conf_{};
@@ -479,7 +464,6 @@ MultioHammer::MultioHammer(int argc, char** argv) : multio::MultioTool(argc, arg
     options_.push_back(new eckit::option::SimpleOption<size_t>("nbsteps", "Number of output time steps"));
     options_.push_back(new eckit::option::SimpleOption<size_t>("member", "Ensemble member"));
     options_.push_back(new eckit::option::SimpleOption<long>("sleep", "Seconds of simulated work per step"));
-    options_.push_back(new eckit::option::SimpleOption<bool>("check-data-only", "For TCP: will only check data"));
 }
 
 
@@ -495,7 +479,6 @@ void MultioHammer::init(const eckit::option::CmdArgs& args) {
     args.get("nbparams", paramCount_);
     args.get("member", ensMember_);
     args.get("sleep", sleep_);
-    args.get("check-data-only", checkDataOnly_);
 
     MultioConfiguration multioConf;
     if (configPath_.empty()) {
@@ -515,7 +498,7 @@ void MultioHammer::init(const eckit::option::CmdArgs& args) {
          [this, &multioConf]() { return std::make_unique<MPITestPolicy>(conf_, std::move(multioConf), clientCount_); }},
         {"tcp",
          [this, &multioConf]() {
-             return std::make_unique<TCPTestPolicy>(conf_, std::move(multioConf), clientCount_, port_, checkDataOnly_);
+             return std::make_unique<TCPTestPolicy>(conf_, std::move(multioConf), clientCount_, port_);
          }},
         {"thread",
          [this, &multioConf]() {
@@ -530,6 +513,10 @@ void MultioHammer::init(const eckit::option::CmdArgs& args) {
     transportType_ = conf_.getString("transport");
 
     testPolicy_ = policyFactory.at(transportType_)();
+
+    serverPeers_ = testPolicy_->computeServerPeers();
+    rank_ = testPolicy_->computeRank();
+    transport_ = testPolicy_->createTransport();
 }
 
 void MultioHammer::finish(const eckit::option::CmdArgs&) {}
@@ -537,14 +524,13 @@ void MultioHammer::finish(const eckit::option::CmdArgs&) {}
 //---------------------------------------------------------------------------------------------------------------
 
 void MultioHammer::startListening(std::shared_ptr<Transport> transport) {
-    Listener listener(ComponentConfiguration(conf_, testPolicy_->multioHandle->multioConfig()), *transport);
+    Listener listener(ComponentConfiguration(conf_, testPolicy_->multioConfig()), *transport);
     listener.start();
 }
 
 void MultioHammer::sendData(const PeerList& serverPeers, std::shared_ptr<Transport> transport,
                             const size_t client_list_id) const {
-    // TODO Use multio client poperly instead of accessing transport
-    const Peer& client = transport->localPeer();
+    Peer client = transport->localPeer();
 
     // Open all servers and close them when going out of scope
     std::vector<std::unique_ptr<Connection>> connections;
@@ -555,15 +541,15 @@ void MultioHammer::sendData(const PeerList& serverPeers, std::shared_ptr<Transpo
     auto idxm = generate_index_map(client_list_id, clientCount_);
     eckit::Buffer buffer(reinterpret_cast<const char*>(idxm.data()), idxm.size() * sizeof(int32_t));
     std::unique_ptr<Domain> index_map
-        = std::make_unique<Unstructured>(std::move(idxm), static_cast<std::int64_t>(field_size()));
+        = std::make_unique<Unstructured>(std::move(idxm), static_cast<long>(field_size()));
 
     // send partial mapping
     for (auto& server : serverPeers) {
         Metadata metadata;
-        metadata.set(dm::legacy::Name, "grid-point");
-        metadata.set(dm::legacy::Category, "atms-domain-map");
-        metadata.set(dm::legacy::GlobalSize, static_cast<std::int64_t>(field_size()));
-        metadata.set(dm::legacy::Representation, "unstructured");  // TODO: Use glossary?
+        metadata.set("name", "grid-point")
+            .set("category", "atms-domain-map")
+            .set("globalSize", static_cast<long>(field_size()))
+            .set("representation", "unstructured");
 
         Message msg{Message::Header{Message::Tag::Domain, client, *server, std::move(metadata)}, buffer};
 
@@ -575,11 +561,9 @@ void MultioHammer::sendData(const PeerList& serverPeers, std::shared_ptr<Transpo
         for (auto param : sequence(paramCount_, 1)) {
             for (auto level : sequence(levelCount_, 1)) {
                 Metadata metadata;
-                metadata.set(dm::legacy::Level, level);
-                metadata.set(dm::legacy::Param, param);
-                metadata.set(dm::legacy::Step, step);
+                metadata.set("level", level).set("param", param).set("step", step);
 
-                std::string field_id = metadata.toString();
+                std::string field_id = multio::message::to_string(metadata);
 
                 std::vector<double> field;
                 auto& global_field = global_test_field(field_id, field_size(), transportType_, client_list_id);
@@ -589,17 +573,14 @@ void MultioHammer::sendData(const PeerList& serverPeers, std::shared_ptr<Transpo
                 auto id = std::hash<std::string>{}(field_id) % serverCount_;
                 ASSERT(id < serverPeers.size());
 
-                // TODO - all other transports can use a PayloadReference because the send is performing a copy behind a
-                // blocking call. The  threaded transport is pushing to a queue and is not blocking - may cause
-                // different problems.
                 eckit::Buffer buffer(reinterpret_cast<const char*>(field.data()), field.size() * sizeof(double));
 
-                metadata.set(dm::legacy::Name, std::to_string(param));
-                metadata.set(dm::legacy::Param, std::to_string(param));
-                metadata.set(dm::legacy::Category, "model-level");
-                metadata.set(dm::legacy::GlobalSize, static_cast<std::int64_t>(field_size()));
-                metadata.set(dm::legacy::Domain, "grid-point");
-                metadata.set(dm::legacy::Precision, "double");
+                metadata.set("name", std::to_string(param))
+                    .set("param", std::to_string(param))
+                    .set("category", "model-level")
+                    .set("globalSize", static_cast<long>(field_size()))
+                    .set("domain", "grid-point")
+                    .set("precision", "double");
 
                 Message msg{Message::Header{Message::Tag::Field, client, *serverPeers[id], std::move(metadata)},
                             std::move(buffer)};
@@ -610,10 +591,10 @@ void MultioHammer::sendData(const PeerList& serverPeers, std::shared_ptr<Transpo
 
         // Send flush messages
         Metadata md;
-        md.set(dm::legacy::Step, eckit::Translator<std::int64_t, std::string>{}(step));
-        md.set(dm::legacy::Category, "atms-checkpoint");
-        md.set(dm::legacy::Trigger, "step");
-        md.set(dm::legacy::Domain, "grid-point");
+        md.set("step", eckit::Translator<long, std::string>{}(step))
+            .set("category", "atms-checkpoint")
+            .set("trigger", "step")
+            .set("domain", "grid-point");
         for (auto& server : serverPeers) {
             Message flush{Message::Header{Message::Tag::Flush, client, *server, Metadata{md}}};
             transport->send(flush);
@@ -638,14 +619,9 @@ void MultioHammer::testData() {
             for (auto level : sequence(levelCount_, 1)) {
                 std::string file_name = std::to_string(level) + std::string("::") + std::to_string(param)
                                       + std::string("::") + std::to_string(step);
-                Metadata metadata;
-                metadata.set(dm::legacy::Level, level);
-                metadata.set(dm::legacy::Param, param);
-                metadata.set(dm::legacy::Step, step);
-
-                std::string field_id = metadata.toString();
-
-                auto expect = global_test_field(field_id, field_size());
+                std::string field_id = R"({"level":)" + std::to_string(level) + R"(,"param":)" + std::to_string(param)
+                                     + R"(,"step":)" + std::to_string(step) + "}";
+                auto expect = global_test_field(field_id);
                 auto actual = file_content(file_name);
 
                 LOG_DEBUG_LIB(LibMultio) << "field id = " << field_id << std::endl;
@@ -666,55 +642,29 @@ void MultioHammer::testData() {
 }
 
 void MultioHammer::executeGeneric() {
-    if (!testPolicy_->multioHandle) {
-        return;
-    }
-
-    PeerList serverPeers{testPolicy_->computeServerPeers()};
-    int rank{testPolicy_->computeRank()};
-    std::shared_ptr<Transport> transport{testPolicy_->createTransport()};
-
-    auto const iAmServer = (rank >= clientCount_);
+    auto const iAmServer = (rank_ >= clientCount_);
 
     if (iAmServer) {
-        startListening(transport);
+        startListening(transport_);
     }
     else {
-        sendData(serverPeers, transport, rank);
+        sendData(serverPeers_, transport_, rank_);
     }
 }
 
 void MultioHammer::executeThread() {
     // Spawn servers
-    if (!testPolicy_->multioHandle) {
-        return;
-    }
-
     PeerList serverPeers;
-    std::shared_ptr<Transport> transport{testPolicy_->createTransport()};
-
     for (size_t i = 0; i != serverCount_; ++i) {
         serverPeers.emplace_back(
-            std::make_unique<ThreadPeer>(std::thread{&MultioHammer::startListening, this, transport}));
+            std::make_unique<ThreadPeer>(std::thread{&MultioHammer::startListening, this, transport_}));
     }
 
     // Spawn clients
     PeerList clientPeers;
     for (auto client : sequence(clientCount_, 0)) {
         clientPeers.emplace_back(std::make_unique<ThreadPeer>(
-            std::thread{&MultioHammer::sendData, this, std::cref(serverPeers), transport, client}));
-    }
-
-    for (auto& t : clientPeers) {
-        if (ThreadPeer* p = dynamic_cast<ThreadPeer*>(t.get()); p != nullptr) {
-            p->join();
-        }
-    }
-
-    for (auto& t : serverPeers) {
-        if (ThreadPeer* p = dynamic_cast<ThreadPeer*>(t.get()); p != nullptr) {
-            p->join();
-        }
+            std::thread{&MultioHammer::sendData, this, std::cref(serverPeers), transport_, client}));
     }
 }
 
@@ -725,8 +675,13 @@ void MultioHammer::executePlans(const eckit::option::CmdArgs& args) {
     codes_handle* handle = codes_handle_new_from_file(nullptr, fin, PRODUCT_GRIB, &err);
     ASSERT(handle);
 
-    std::vector<std::unique_ptr<Plan>> plans = multio::action::Plan::makePlans(
-        conf_.getSubConfigurations("plans"), testPolicy_->multioHandle->multioConfig());
+    std::vector<std::unique_ptr<Plan>> plans;
+    for (auto&& subComp : conf_.getSubConfigurations("plans")) {
+        eckit::Log::debug<multio::LibMultio>() << subComp << std::endl;
+        plans.emplace_back(
+            std::make_unique<Plan>(ComponentConfiguration(std::move(subComp), testPolicy_->multioConfig())));
+    }
+
     std::string expver = "xxxx";
     auto size = expver.size();
     CODES_CHECK(codes_set_string(handle, "expver", expver.c_str(), &size), nullptr);
@@ -748,8 +703,7 @@ void MultioHammer::executePlans(const eckit::option::CmdArgs& args) {
 
         for (const auto& levtype : {"ml", "pl", "sfc"}) {
             size = std::strlen(levtype);
-            CODES_CHECK(codes_set_string(handle, "typeOfLevel", levtype_to_typeOfLevel.at(levtype).c_str(), &size),
-                        nullptr);
+            CODES_CHECK(codes_set_string(handle, "levtype", levtype, &size), nullptr);
 
             for (auto level : create_levlist(levtype, levelCount_)) {
                 CODES_CHECK(codes_set_long(handle, "level", level), nullptr);
@@ -764,8 +718,7 @@ void MultioHammer::executePlans(const eckit::option::CmdArgs& args) {
 
                     CODES_CHECK(codes_get_message(handle, reinterpret_cast<const void**>(&buf), &sz), nullptr);
 
-                    Message msg{Message::Header{Message::Tag::Field, Peer{"", 0}, Peer{"", 0}},
-                                multio::message::PayloadReference{buf, sz}};
+                    Message msg{Message::Header{Message::Tag::Grib, Peer{"", 0}, Peer{"", 0}}, eckit::Buffer{buf, sz}};
 
                     for (const auto& plan : plans) {
                         plan->process(msg);
@@ -775,11 +728,11 @@ void MultioHammer::executePlans(const eckit::option::CmdArgs& args) {
         }
 
         Metadata md;
-        md.set(dm::legacy::Step, eckit::Translator<std::int64_t, std::string>()(step));
-        md.set(dm::legacy::Category, "atms-checkpoint");
-        md.set("trigger", "step");
-        md.set(dm::legacy::Domain, "grid-point");
-        md.set(dm::legacy::Precision, "double");
+        md.set("step", eckit::Translator<long, std::string>()(step))
+            .set("category", "atms-checkpoint")
+            .set("trigger", "step")
+            .set("domain", "grid-point")
+            .set("precision", "double");
 
         Message msg{Message::Header{Message::Tag::Flush, Peer{}, Peer{}, Metadata{md}}};
         for (const auto& plan : plans) {
@@ -801,13 +754,12 @@ void MultioHammer::executePlans(const eckit::option::CmdArgs& args) {
 
 int main(int argc, char** argv) {
     int ret;
-    multio::util::Timing<> timing_;
+    eckit::Timing timing_;
     {
-        multio::util::ScopedTiming scTimer{timing_};
+        multio::util::ScopedTimer scTimer{timing_};
         MultioHammer tool{argc, argv};
         ret = tool.start();
     }
-    timing_.process();
     eckit::Log::info() << "-- Total hammer:   " << timing_ << "s" << std::endl;
     return ret;
 }

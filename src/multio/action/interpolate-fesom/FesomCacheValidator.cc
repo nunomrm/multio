@@ -24,7 +24,7 @@
 #include "FesomInterpolationWeights.h"
 #include "InterpolateFesom.h"
 
-namespace multio::action::interpolate_fesom {
+namespace multio::action::interpolateFESOM {
 
 
 class FesomCacheValidator final : public multio::MultioTool {
@@ -77,6 +77,8 @@ FesomCacheValidator::FesomCacheValidator(int argc, char** argv) :
     options_.push_back(new eckit::option::SimpleOption<std::string>(
         "sortOption",
         "Type of sort to be applied to the triplets [\"columMajor\"|\"rowMajor\"|\"raw\"]. Default(\"raw\")"));
+
+    return;
 }
 
 
@@ -157,12 +159,12 @@ void FesomCacheValidator::execute(const eckit::option::CmdArgs& args) {
 };
 
 
-void FesomCacheValidator::finish(const eckit::option::CmdArgs&) {}
+void FesomCacheValidator::finish(const eckit::option::CmdArgs&) {};
 
-}  // namespace multio::action::interpolate_fesom
+}  // namespace multio::action::interpolateFESOM
 
 
 int main(int argc, char** argv) {
-    multio::action::interpolate_fesom::FesomCacheValidator tool(argc, argv);
+    multio::action::interpolateFESOM::FesomCacheValidator tool(argc, argv);
     return tool.start();
 }

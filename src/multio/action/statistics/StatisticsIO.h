@@ -11,10 +11,9 @@
 #include <string>
 #include <vector>
 
-#include "eckit/filesystem/PathName.h"
 #include "eckit/memory/NonCopyable.h"
 
-namespace multio::action::statistics {
+namespace multio::action {
 
 class IOBuffer {
 private:
@@ -47,45 +46,40 @@ public:
 // -------------------------------------------------------------------------------------------------------------------
 class StatisticsIO {
 public:
-    StatisticsIO(const std::string& basePath, const std::string& uniqueID, const std::string& ext);
-    virtual ~StatisticsIO();
+    StatisticsIO(const std::string& path, const std::string& prefix, const std::string& ext);
+    virtual ~StatisticsIO() = default;
 
-    void setDateTime(const std::string& dateTime);
-    std::string getDateTime();
-
-
-    std::string pushDir(const std::string& directory);
-    std::string popDir();
-    std::string getRestartSymLink() const;  // This returns the restart dir for the current plan
-    std::string getCurrentDir() const;
-    std::string getUniqueRestartDir() const;
-    bool currentDirExists() const;
-    void createCurrentDir() const;
-    void createDateTimeDir() const;
-
+    void setKey(const std::string& key);
+    void setCurrStep(long step);
+    void setPrevStep(long step);
+    void setSuffix(const std::string& suffix);
+    void reset();
     IOBuffer getBuffer(std::size_t size);
-    std::vector<eckit::PathName> getFiles();
-    std::vector<eckit::PathName> getDirs();
 
-    virtual void write(const std::string& name, std::size_t fieldSize, size_t writeSize) = 0;
-    virtual void readSize(const std::string& name, size_t& readSize) = 0;
+    virtual void write(const std::string& name, size_t writeSize) = 0;
     virtual void read(const std::string& name, size_t readSize) = 0;
     virtual void flush() = 0;
+
 
 protected:
     std::string generatePathName() const;
     std::string generateCurrFileName(const std::string& name) const;
+    std::string generatePrevFileName(const std::string& name) const;
+    void removeCurrFile(const std::string& name) const;
+    void removePrevFile(const std::string& name) const;
 
-    std::vector<std::string> path_;
-    std::string basePath_;
-    std::string dateTime_;
-    std::string uniqueID_;
+    const std::string path_;
+    const std::string prefix_;
+    long prevStep_;
+    long currStep_;
+
+    std::string key_;
+    std::string suffix_;
+    std::string name_;
     const std::string ext_;
-    bool hasValidDateTime_;
 
     std::vector<std::uint64_t> buffer_;
 };
-
 
 class StatisticsIOBuilderBase;
 
@@ -101,8 +95,7 @@ public:  // methods
 
     void list(std::ostream&);
 
-    std::shared_ptr<StatisticsIO> build(const std::string& name, const std::string& basePath,
-                                        const std::string& uniqueID);
+    std::shared_ptr<StatisticsIO> build(const std::string& name, const std::string& path, const std::string& prefix);
 
 private:  // members
     std::map<std::string, const StatisticsIOBuilderBase*> factories_;
@@ -112,7 +105,7 @@ private:  // members
 
 class StatisticsIOBuilderBase : private eckit::NonCopyable {
 public:  // methods
-    virtual std::shared_ptr<StatisticsIO> make(const std::string& basePath, const std::string& uniqueID) const = 0;
+    virtual std::shared_ptr<StatisticsIO> make(const std::string& path, const std::string& prefix) const = 0;
 
 protected:  // methods
     StatisticsIOBuilderBase(const std::string&);
@@ -124,12 +117,12 @@ protected:  // methods
 
 template <class T>
 class StatisticsIOBuilder final : public StatisticsIOBuilderBase {
-    std::shared_ptr<StatisticsIO> make(const std::string& basePath, const std::string& uniqueID) const override {
-        return std::make_shared<T>(basePath, uniqueID);
+    std::shared_ptr<StatisticsIO> make(const std::string& path, const std::string& prefix) const override {
+        return std::make_shared<T>(path, prefix);
     }
 
 public:
     StatisticsIOBuilder(const std::string& name) : StatisticsIOBuilderBase(name) {}
 };
 
-}  // namespace multio::action::statistics
+}  // namespace multio::action

@@ -16,7 +16,7 @@
 #include "eckit/exception/Exceptions.h"
 #include "eckit/log/Log.h"
 
-namespace multio::action::print {
+namespace multio::action {
 
 Print::Print(const ComponentConfiguration& compConf) : ChainedAction(compConf) {
     stream_ = compConf.parsedConfig().getString("stream", "info");
@@ -40,12 +40,12 @@ Print::Print(const ComponentConfiguration& compConf) : ChainedAction(compConf) {
 
 void Print::executeImpl(message::Message msg) {
     ASSERT(os_);
-    bool doOutput = onlyFields_ ? (msg.tag() == message::Message::Tag::Field) : true;
+    bool doOutput = onlyFields_ ? msg.tag() == message::Message::Tag::Field ? true : false : true;
     if (doOutput) {
         if (!prefix_.empty()) {
-            std::cout << prefix_ << ": ";
+            (*os_) << prefix_ << ": ";
         }
-        std::cout << msg << std::endl;
+        (*os_) << msg << std::endl;
     }
     executeNext(std::move(msg));
 }
@@ -57,4 +57,4 @@ void Print::print(std::ostream& os) const {
 
 static ActionBuilder<Print> PrintBuilder("print");
 
-}  // namespace multio::action::print
+}  // namespace multio::action

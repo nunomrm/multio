@@ -50,8 +50,6 @@ private:
     void openConnections() override;
     void closeConnections() override;
 
-    void synchronize() override;
-
     Message receive() override;
 
     void abort(std::exception_ptr) override;
@@ -64,7 +62,7 @@ private:
 
     void print(std::ostream& os) const override;
 
-    const Peer& localPeer() const override;
+    Peer localPeer() const override;
 
     void listen() override;
 
@@ -76,9 +74,6 @@ private:
     size_t blockingReceive(eckit::mpi::Status& status, MpiBuffer& buffer);
 
     void encodeMessage(eckit::Stream& strm, const Message& msg);
-
-    size_t getMpiPoolSize(const ComponentConfiguration& compConf);
-    size_t getMpiBufferSize(const ComponentConfiguration& compConf);
 
     MpiPeer local_;
     eckit::mpi::Group parentGroup_;

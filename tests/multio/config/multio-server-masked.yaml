@@ -6,13 +6,13 @@ run:
   date-of-analysis: 20170909
 
 client:
-  on-error: abort-transport
+  on-error: abort-all-transports
   plans:
     - name: ocean-replay-grid-info-stream
       actions:
         - type: select
           match:
-            - category: [ocean-domain-map, ocean-mask, parametrization]
+            - category: [ocean-domain-map, ocean-mask]
 
         - type: transport
           target: server

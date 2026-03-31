@@ -19,9 +19,14 @@
 #include <iosfwd>
 
 #include "multio/action/Action.h"
-#include "multio/sink/DataSink.h"
 
-namespace multio::action::single_field_sink {
+namespace multio {
+
+namespace sink {
+class DataSink;
+}  // namespace sink
+
+namespace action {
 
 using message::Message;
 
@@ -43,4 +48,5 @@ private:
     std::vector<std::unique_ptr<sink::DataSink>> dataSinks_;
 };
 
-}  // namespace multio::action::single_field_sink
+}  // namespace action
+}  // namespace multio

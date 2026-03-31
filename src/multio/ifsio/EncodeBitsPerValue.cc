@@ -70,12 +70,10 @@ public:
 
     Encoding operator()(int paramid) {
         auto e = table_.find(paramid);
-        if (e != table_.end()) {
+        if (e != table_.end())
             return e->second;
-        }
-        else {
+        else
             return Encoding{};
-        }
     }
 
 private:
@@ -127,15 +125,12 @@ static std::string fix_levtype(const std::string& levtype) {
 
     std::transform(levtype.begin(), levtype.end(), result.begin(), [](unsigned char c) { return std::tolower(c); });
 
-    if (result == "m") {
+    if (result == "m")
         result = "ml";
-    }
-    if (result == "p") {
+    if (result == "p")
         result = "pl";
-    }
-    if (result == "s" or result == "sf") {
+    if (result == "s" or result == "sf")
         result = "sfc";
-    }
 
     return result;
 }
@@ -183,31 +178,24 @@ int EncodeBitsPerValue::hack(int paramid, const std::string& levtype) {
     const int NGRBCIWC = 247;     // NGRBCIWC - 247 Cloud ice water content
     const int NGRBCLBT = 260510;  // NGRBCLBT - 260510 Cloudy brightness temperature
     const int NGRBCSBT = 260511;  // NGRBCSBT - 260511 Clear-sky brightness temperature
-    const int NGRBROL = 260688;   // NGRBROL  - 260688 Reciprocal Obukhow Length
 
-    if (paramid == NGRBCC) {
+    if (paramid == NGRBCC)
         return 8;
-    }
 
-    if (paramid == NGRBSD or paramid == NGRBFSR or paramid == NGRBROL) {
+    if (paramid == NGRBSD or paramid == NGRBFSR)
         return 24;
-    }
 
-    if ((paramid == NGRBCLWC or paramid == NGRBCIWC) and levtype == "pl") {
+    if ((paramid == NGRBCLWC or paramid == NGRBCIWC) and levtype == "pl")
         return 12;
-    }
 
-    if ((paramid > 210000 and paramid < 228000)) {
+    if ((paramid > 210000 and paramid < 228000))
         return 24;
-    }
 
-    if (paramid == NGRBCLBT or paramid == NGRBCSBT) {
+    if (paramid == NGRBCLBT or paramid == NGRBCSBT)
         return 10;
-    }
 
-    if (getenv_COMPR_FC_GP_ML() and levtype == "ml") {
+    if (getenv_COMPR_FC_GP_ML() and levtype == "ml")
         return 10;
-    }
 
     return 16;
 }
@@ -226,9 +214,8 @@ void EncodeBitsPerValue::cacheBitsPerValue(int paramid, const std::string& levty
 
 Encoding EncodeBitsPerValue::tabulatedBitsPerValue(int paramid, const std::string& levtype) {
     auto tableitr = tables_.find(levtype);
-    if (tableitr == tables_.end()) {
+    if (tableitr == tables_.end())
         return Encoding();
-    }
 
     EncodingTable& table = *tableitr->second;
 

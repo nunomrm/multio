@@ -25,4 +25,3 @@ An example that reads fields and writes them as output to a file using a config.
    :maxdepth: 1
 
    usage-examples/multio_example
-   usage-examples/example_notebook
