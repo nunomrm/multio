@@ -94,7 +94,6 @@ private:  // members
     std::string hard_path_;                 // Path received from component configuration
     std::string flexible_path_;             // Path appended due to filename CMOR format requirements
     std::string CMOR_table;
-    std::string nc_name;
     codes_handle* h_;
     std::unordered_map<std::string, std::string> gribToNetcdfMap;
     size_t n_messages = 1;

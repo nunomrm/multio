@@ -18,9 +18,10 @@
 #include "multio/util/logfile_name.h"
 #include "eckit/io/DataHandle.h"    // Is this needed?
 #include "grib_api_internal.h"   // Needed for grib_handle full definition (if not it will be forward-declared)
-                                                                 
-using namespace eckit;
+#include "multio/util/FailureHandling.h"
 
+
+using namespace eckit;
 //----------------------------------------------------------------------------------------------------------------------
 
 namespace multio::sink {
@@ -290,16 +291,31 @@ int NetcdfSink::Filter(eckit::message::Message msg) {
     int e;
     size_t data_size = msg.length();
  
-    h_ = codes_handle_new_from_message(nullptr, msg.data(), data_size); // This was already done before to convert multio::message to eckit::message
-    if (h_ == nullptr)
+    try
     {
+        h_ = codes_handle_new_from_message(nullptr, msg.data(), data_size); // This was already done before to convert multio::message to eckit::message
+        if (!h_)
+        {
+            eckit::Log::error() << "Failed to create grib_handle from message " << std::endl;
+            throw multio::util::FailureAwareException("Failed to create grib_handle from message in Netcdf pipeline");
+        }
+        
+        n_messages = 1;
+        modifyFilename(msg);
+        eckit::Log::info() << "Passing nc_name from MultIO to Eccodes " << nc_name << std::endl;
+        e = codes_to_netcdf_multio(h_, n_messages, flexible_path_.c_str(), CMOR_table.c_str(), nc_name.c_str());
+    }
+    catch(const multio::util::FailureAwareException& ex)
+    {        
         eckit::Log::error() << "Failed to create grib_handle from message " << std::endl;
+        eckit::Log::error() << ex << '\n';
+        throw;
+    }
+    if (h_)                         // Ensures cleanup always occurs
+    {
+        grib_handle_delete(h_);
     }
     
-    n_messages = 1;
-    modifyFilename(msg);
-    e = codes_to_netcdf_multio(h_, n_messages, flexible_path_.c_str(), CMOR_table.c_str(), nc_name.c_str());
-    grib_handle_delete(h_);
     return e;
     
 }
