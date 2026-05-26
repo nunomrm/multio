@@ -304,7 +304,7 @@ int NetcdfSink::Filter(eckit::message::Message msg) {
         std::string paramString = std::to_string(msg.getLong("param"));
         std::string nc_name = NetcdfSink::matchGribNetcdf(paramString);
         eckit::Log::info() << "Passing nc_name from MultIO to Eccodes " << nc_name << std::endl;
-        e = codes_to_netcdf_multio(&h_, n_messages, flexible_path_.c_str(), CMOR_table.c_str(), nc_name.c_str());
+        e = codes_to_netcdf_multio(h_, n_messages, flexible_path_.c_str(), CMOR_table.c_str(), nc_name.c_str());
     }
     catch(const multio::util::FailureAwareException& ex)
     {
