@@ -63,7 +63,7 @@ NetcdfSink::NetcdfSink(const config::ComponentConfiguration& compConf) :
         eckit::Log::info() << "CMOR_table not set, assuming Amon " << std::endl;
         CMOR_table = "Amon";
     }
-
+    
     n_messages = 0;                                                             // Initializes message counter
     try
     {
@@ -74,15 +74,15 @@ NetcdfSink::NetcdfSink(const config::ComponentConfiguration& compConf) :
     {
         eckit::Log::error() << e.what() << '\n';
     }
-
-    eckit::Log::info() << "Grib_Netcdf_Conversion path is :: " << json_conversion << std::endl; // TODO:
+    
+    eckit::Log::info() << "Grib_Netcdf_Conversion path is :: " << json_conversion << std::endl; // TODO: 
     PathName jsonFilePath(json_conversion);
-    try
+    try 
     {
         jsonValue = JSONParser::decodeFile(jsonFilePath);
         eckit::Log::info() << "Parsed GRIB_NETCDF_CONVERSION JSON file succesfully " << std::endl;
     }
-    catch (const std::exception& e)
+    catch (const std::exception& e) 
     {
         eckit::Log::info() << "Error parsing JSON file: " << e.what() << std::endl; // TODO Error handline, debug output
     }
@@ -197,7 +197,7 @@ std::string NetcdfSink::fclen_to_enddate(std::string startdatetime)
 }
 
 template <typename T>
-std::string NetcdfSink::FormatLeadingZero(T number)
+std::string NetcdfSink::FormatLeadingZero(T number)  
 {
     static_assert(std::is_integral<T>::value, "Template parameter must be integral type");
     std::ostringstream oss;
@@ -207,15 +207,16 @@ std::string NetcdfSink::FormatLeadingZero(T number)
 
 /*
 
-Function to return a string for a CMIP6-like filename
+Function to return a string for a CMIP6-like filename 
 
 */
 std::string NetcdfSink::CMOR_Filename(eckit::message::Message msg)
-{
+{ 
     std::string dateString = std::to_string(msg.getLong("date"));
-    long timeLong = msg.getLong("time");
-    eckit::Log::info() << "startDate :: " << msg.getLong("dataDate") << std::endl;   // TODO: Direct to Debug out
+    long timeLong = msg.getLong("time"); 
+    eckit::Log::info() << "startDate :: " << msg.getLong("dataDate") << std::endl;   // TODO: Direct to Debug out                                                                                   
     std::string paramString = std::to_string(msg.getLong("param"));
+
     std::string nc_name = NetcdfSink::matchGribNetcdf(paramString);    // Returns netcdf name for a given grib id
     eckit::Log::info() << "Getting env variable yyyymmddzz " << std::endl;
 
@@ -229,7 +230,7 @@ std::string NetcdfSink::CMOR_Filename(eckit::message::Message msg)
     }
     else                                                          // TODO: Add error handling here
     {
-        startdate = "2020012000";
+        startdate = "2020012000";                                       
         eckit::Log::info() << "Value incorrectly read for startdate, so using default " << startdate << std::endl;
     }
 
@@ -240,7 +241,7 @@ std::string NetcdfSink::CMOR_Filename(eckit::message::Message msg)
     timeLong = timeLong / 100;                                  // Getting time as HHMM, we don't care about MM
 
     std::string timeString = FormatLeadingZero(timeLong);
-
+    
     dateString = dateString + timeString;
     return "_EERIE_IFS-NEMO_historical_r1i1p1f1_" + nc_name + "_" + startdate + "-" + enddate + "-" + dateString;
 }
@@ -264,14 +265,14 @@ void NetcdfSink::modifyFilename(eckit::message::Message msg)
     {
 
         levelistString = std::to_string(msg.getLong("levelist"));
-        flexible_path_ = hard_path_ + CMOR_Filename(msg) + "_level_" + levelistString + ".nc" ;
+        flexible_path_ = hard_path_ + CMOR_Filename(msg) + "_level_" + levelistString + ".nc" ; 
     }
-    else if (levtype == "o3d")
+    else if (levtype == "o3d")                  
     {
 
         levelistString = std::to_string(msg.getLong("level"));
         flexible_path_ = hard_path_ + CMOR_Filename(msg) + "_level_" + levelistString + ".nc";
-    }
+    } 
     else
     {
         flexible_path_ = hard_path_ + CMOR_Filename(msg) + ".nc";
@@ -283,13 +284,13 @@ void NetcdfSink::write(eckit::message::Message msg) {
     int e;
     eckit::Log::info() << "Write function is called :: " << std::endl;
     Filter(msg);
-
+    
 }
 
 int NetcdfSink::Filter(eckit::message::Message msg) {
     int e;
     size_t data_size = msg.length();
-
+ 
     try
     {
         h_ = codes_handle_new_from_message(nullptr, msg.data(), data_size); // This was already done before to convert multio::message to eckit::message
@@ -298,16 +299,14 @@ int NetcdfSink::Filter(eckit::message::Message msg) {
             eckit::Log::error() << "Failed to create grib_handle from message " << std::endl;
             throw multio::util::FailureAwareException("Failed to create grib_handle from message in Netcdf pipeline");
         }
-
+        
         n_messages = 1;
         modifyFilename(msg);
-        std::string paramString = std::to_string(msg.getLong("param"));
-        std::string nc_name = NetcdfSink::matchGribNetcdf(paramString);
         eckit::Log::info() << "Passing nc_name from MultIO to Eccodes " << nc_name << std::endl;
         e = codes_to_netcdf_multio(h_, n_messages, flexible_path_.c_str(), CMOR_table.c_str(), nc_name.c_str());
     }
     catch(const multio::util::FailureAwareException& ex)
-    {
+    {        
         eckit::Log::error() << "Failed to create grib_handle from message " << std::endl;
         eckit::Log::error() << ex << '\n';
         throw;
@@ -316,9 +315,9 @@ int NetcdfSink::Filter(eckit::message::Message msg) {
     {
         grib_handle_delete(h_);
     }
-
+    
     return e;
-
+    
 }
 
 void NetcdfSink::flush() {
